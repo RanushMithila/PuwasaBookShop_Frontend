@@ -1,0 +1,25 @@
+{
+  "name": "puwasa-pos-electron-shell",
+  "version": "1.0.0",
+  "description": "The Electron main process and backend for the Puwasa POS System.",
+  "main": "main.js",
+  "author": "Your Name",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
+    "dev:react": "cd ../frontend && npm run dev",
+    "dev:electron": "npm run build && cross-env NODE_ENV=development electron .",
+    "build": "echo \"No build step required for main.js. If you use TypeScript, place your build command here.\""
+  },
+  "dependencies": {
+    "node-thermal-printer": "^4.5.0",
+    "usb": "^2.15.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^29.1.5",
+    "electron-squirrel-startup": "^1.0.1"
+  }
+}
