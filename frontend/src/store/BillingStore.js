@@ -5,7 +5,6 @@ const useBillingStore = create((set, get) => ({
   selectedItems: [],
   customer: null, // Holds the selected customer object { id, name }
   paymentMethod: 'cash',
-  taxRate: 0.1, // 10% tax, can be made dynamic later
   currentBillId: null, // Stores the ID of a bill that is on hold or being processed
 
   // --- ACTIONS ---
@@ -73,10 +72,9 @@ const useBillingStore = create((set, get) => ({
   getDiscountedSubtotal: () => get().getSubtotal() - get().getTotalDiscount(),
 
   // Calculates the tax amount based on the discounted subtotal
-  getTax: () => get().getDiscountedSubtotal() * get().taxRate,
 
   // Calculates the final, grand total to be paid
-  getTotal: () => get().getDiscountedSubtotal() + get().getTax(),
+  getTotal: () => get().getDiscountedSubtotal(),
 
   // Calculates the total number of individual items in the cart (respecting quantity)
   getTotalItems: () => get().selectedItems.reduce((total, item) => total + (item.QTY || 1), 0),

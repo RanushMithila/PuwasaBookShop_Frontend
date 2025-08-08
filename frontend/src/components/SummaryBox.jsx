@@ -17,7 +17,6 @@ const SummaryBox = () => {
     getTotalDiscount,
     getSubtotal,
     getTotalItems,
-    getTax,
     resetTransaction,
     setCurrentBillId,
   } = useBillingStore.getState();
@@ -31,7 +30,7 @@ const SummaryBox = () => {
   const totalDiscount = getTotalDiscount();
   const subtotal = getSubtotal();
   const totalItems = getTotalItems();
-  const tax = getTax();
+
 
   /**
    * A unified function to process the bill for both "Hold" and "Pay Now".
@@ -80,7 +79,6 @@ const SummaryBox = () => {
         items: [...selectedItems],
         subtotal,
         discount: totalDiscount,
-        tax,
         total,
       });
 
@@ -113,7 +111,6 @@ const SummaryBox = () => {
         <div className="flex justify-between text-sm"><span>Total Items:</span><span className="font-medium">{totalItems}</span></div>
         <div className="flex justify-between text-sm"><span>Subtotal:</span><span className="font-medium">${subtotal.toFixed(2)}</span></div>
         {totalDiscount > 0 && (<div className="flex justify-between text-sm text-green-600"><span>Discount:</span><span className="font-medium">-${totalDiscount.toFixed(2)}</span></div>)}
-        <div className="flex justify-between text-sm"><span>Tax:</span><span className="font-medium">${tax.toFixed(2)}</span></div>
         <hr className="my-2"/>
         <div className="flex justify-between text-lg font-bold"><span>Total:</span><span>${total.toFixed(2)}</span></div>
       </div>

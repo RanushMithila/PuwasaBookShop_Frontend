@@ -1,7 +1,6 @@
-// src/components/Receipt.jsx
 import React from 'react';
 
-const Receipt = React.forwardRef(({ items, total, discount, netTotal }, ref) => {
+const Receipt = React.forwardRef(({ items = [], total = 0, discount = 0, netTotal = 0 }, ref) => {
   const currentDate = new Date().toLocaleString();
 
   return (
@@ -18,11 +17,13 @@ const Receipt = React.forwardRef(({ items, total, discount, netTotal }, ref) => 
           </tr>
         </thead>
         <tbody>
-          {items?.map((item, index) => (
+          {items.map((item, index) => (
             <tr key={index}>
-              <td>{item.name}</td>
-              <td className="text-right">{item.quantity}</td>
-              <td className="text-right">{(item.price * item.quantity).toFixed(2)}</td>
+              <td>{item.name || 'N/A'}</td>
+              <td className="text-right">{item.quantity || 0}</td>
+              <td className="text-right">
+                {(item.price && item.quantity ? item.price * item.quantity : 0).toFixed(2)}
+              </td>
             </tr>
           ))}
         </tbody>
