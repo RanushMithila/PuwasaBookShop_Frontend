@@ -4,7 +4,7 @@ const { execSync } = require('child_process');
 
 ipcMain.handle('print-receipt', async (event, receiptData) => {
   try {
-    // Get the default printer name using Windows command
+    // Automatically get the default printer name using Windows command
     const defaultPrinter = execSync('wmic printer get name,default | findstr /C:"TRUE"').toString().trim();
     const printerName = defaultPrinter.split('TRUE')[0].trim();
 
@@ -58,7 +58,7 @@ ipcMain.handle('print-receipt', async (event, receiptData) => {
 
     // Execute print job
     await printer.execute();
-    console.log("Print job sent.");
+    console.log("Print job sent successfully.");
     return { success: true };
 
   } catch (error) {

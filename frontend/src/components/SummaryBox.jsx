@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import useBillingStore from '../store/BillingStore';
 import useAuthStore from '../store/AuthStore';
-import { createBill, addBillDetails, completeBill } from '../services/BillingService';
-import { printBill } from '../services/PrintingService';
+import { createBill, addBillDetails, completeBill } from '../services/BillingService'; // Ensure this import exists
 
 const SummaryBox = () => {
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // --- Correct State Management ---
   const { user, location } = useAuthStore.getState();
   const {
     getTotal,
@@ -26,9 +24,6 @@ const SummaryBox = () => {
   const subtotal = getSubtotal();
   const totalItems = getTotalItems();
 
-  /**
-   * Handles the "Pay Now" functionality and prints the receipt.
-   */
   const handlePayAndPrintReceipt = async () => {
     if (selectedItems.length === 0) {
       alert('No items in cart.');
@@ -43,7 +38,7 @@ const SummaryBox = () => {
         CashierID: user?.id || 1,
       };
 
-      const billResponse = await createBill(billData);
+      const billResponse = await createBill(billData); // Ensure createBill is defined and imported
       if (!billResponse.status) throw new Error(billResponse.error_message || 'Failed to create bill.');
 
       const billId = billResponse.data;
@@ -62,7 +57,6 @@ const SummaryBox = () => {
 
       alert(`${completeResponse.message}\nBalance: ${completeResponse.data}`);
 
-      // Print the receipt
       const receiptData = {
         billId,
         items: [...selectedItems],
@@ -70,8 +64,11 @@ const SummaryBox = () => {
         discount: totalDiscount,
         total,
       };
-      printBill(receiptData);
 
+      const printResponse = await window.electron.ipcRenderer.invoke('print-receipt', receiptData);
+      if (!printResponse.success) throw new Error(printResponse.error);
+
+      alert('Receipt printed successfully.');
       resetTransaction();
     } catch (error) {
       alert(`An error occurred: ${error.message}`);
