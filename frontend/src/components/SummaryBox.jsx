@@ -4,6 +4,7 @@ import useAuthStore from '../store/AuthStore';
 import { createBill, addBillDetails, completeBill } from '../services/BillingService'; // Ensure this import exists
 
 const SummaryBox = () => {
+  console.log('Electron API:', window.electron);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const { user, location } = useAuthStore.getState();

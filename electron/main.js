@@ -13,29 +13,33 @@ const createWindow = () => {
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'), // Load the preload script
+      nodeIntegration: false, // Disable Node.js integration for security
+      contextIsolation: true, // Enable context isolation for secure API exposure
     },
   });
 
+  // Load the appropriate URL or file based on the environment
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
+    mainWindow.loadURL('http://localhost:5173'); // Development server URL
+    mainWindow.webContents.openDevTools(); // Open developer tools in development mode
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'));
+    mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html')); // Production build
   }
 };
 
 app.whenReady().then(() => {
   createWindow();
-  require('./ipcHandlers/printHandler'); // 👈 Register IPC handlers separately
+
+  // Register IPC handlers
+  require('./ipcHandlers/printHandler'); // Ensure this file exists and handles IPC events
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
+// Quit the app when all windows are closed (except on macOS)
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });

@@ -4,7 +4,6 @@ const { execSync } = require('child_process');
 
 ipcMain.handle('print-receipt', async (event, receiptData) => {
   try {
-    // Automatically get the default printer name using Windows command
     const defaultPrinter = execSync('wmic printer get name,default | findstr /C:"TRUE"').toString().trim();
     const printerName = defaultPrinter.split('TRUE')[0].trim();
 
@@ -12,7 +11,7 @@ ipcMain.handle('print-receipt', async (event, receiptData) => {
 
     const printer = new ThermalPrinter({
       type: PrinterTypes.EPSON,
-      interface: `printer:${printerName}`, // Use the default printer
+      interface: `printer:${printerName}`,
       characterSet: CharacterSet.PC852_LATIN2,
       removeSpecialCharacters: false,
       lineCharacter: "=",
@@ -21,19 +20,16 @@ ipcMain.handle('print-receipt', async (event, receiptData) => {
     const isConnected = await printer.isPrinterConnected();
     if (!isConnected) throw new Error("Printer not connected.");
 
-    // Print header
     printer.alignCenter();
     printer.bold(true).println("Puwasa Bookshop").bold(false);
     printer.println("123 Bookworm Lane, Colombo");
     printer.println("Tel: 011-1234567").newLine();
 
-    // Print bill details
     printer.alignLeft();
     printer.println(`Bill ID: ${receiptData.billId || 'N/A'}`);
     printer.println(`Date: ${new Date().toLocaleString()}`);
     printer.drawLine();
 
-    // Print items
     receiptData.items.forEach(item => {
       const total = (item.QTY * item.itemUnitPrice).toFixed(2);
       printer.tableCustom([
@@ -44,23 +40,18 @@ ipcMain.handle('print-receipt', async (event, receiptData) => {
     });
 
     printer.drawLine();
-
-    // Print totals
     printer.alignRight();
     printer.println(`Subtotal: ${(receiptData.subtotal || 0).toFixed(2)}`);
     printer.println(`Discount: ${(receiptData.discount || 0).toFixed(2)}`);
     printer.bold(true).println(`TOTAL: ${(receiptData.total || 0).toFixed(2)}`).bold(false);
     printer.newLine();
 
-    // Print footer
     printer.alignCenter().println("Thank you for your purchase!").newLine();
     printer.cut();
 
-    // Execute print job
     await printer.execute();
     console.log("Print job sent successfully.");
     return { success: true };
-
   } catch (error) {
     console.error("Print error:", error);
     return { success: false, error: error.message || "Unknown error" };
