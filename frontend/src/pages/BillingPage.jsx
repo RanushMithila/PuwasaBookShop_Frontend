@@ -76,14 +76,21 @@ const BillingPage = () => {
   };
 
   const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write('<html><head><title>Receipt</title></head><body>');
-    printWindow.document.write(receiptRef.current.innerHTML);
-    printWindow.document.write('</body></html>');
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-    printWindow.close();
+    const receiptData = {
+      items: selectedItems,
+      subtotal: useBillingStore.getState().getSubtotal(),
+      discount: useBillingStore.getState().getTotalDiscount(),
+      total: useBillingStore.getState().getTotal(),
+    };
+
+    window.electron.ipcRenderer.invoke('print-receipt', receiptData)
+      .then((response) => {
+        if (response.success) {
+          console.log('Receipt printed successfully.');
+        } else {
+          console.error('Failed to print receipt:', response.error);
+        }
+      });
   };
 
   return (
