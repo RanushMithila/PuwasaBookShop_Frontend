@@ -75,22 +75,49 @@ const BillingPage = () => {
     removeItem(itemId);
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    if (!selectedItems || selectedItems.length === 0) {
+      console.warn('No items to print');
+      alert('No items selected to print.');
+      return;
+    }
+
     const receiptData = {
       items: selectedItems,
       subtotal: useBillingStore.getState().getSubtotal(),
       discount: useBillingStore.getState().getTotalDiscount(),
       total: useBillingStore.getState().getTotal(),
+      billId: useBillingStore.getState().currentBillId || null,
     };
 
-    window.electron.ipcRenderer.invoke('print-receipt', receiptData)
-      .then((response) => {
-        if (response.success) {
-          console.log('Receipt printed successfully.');
+    try {
+      if (!window?.electron?.ipcRenderer) {
+        const msg = 'Electron IPC not available in this environment.';
+        console.error('print receipt:', msg);
+        alert(msg);
+        return;
+      }
+
+      const response = await window.electron.ipcRenderer.invoke('print-receipt', receiptData);
+      console.log('print receipt response:', response);
+
+      if (response && response.success) {
+        alert('Receipt printed successfully.' + (response.printer ? `\nPrinter: ${response.printer}` : ''));
+      } else {
+        // show fallback info if saved to file
+        if (response && response.savedTo) {
+          alert('No default printer found. Receipt saved to: ' + response.savedTo);
+          console.info('Receipt saved to:', response.savedTo);
         } else {
-          console.error('Failed to print receipt:', response.error);
+          const err = (response && response.error) ? response.error : 'Unknown print error';
+          console.error('Failed to print receipt:', err);
+          alert('Failed to print receipt: ' + err);
         }
-      });
+      }
+    } catch (e) {
+      console.error('print receipt: unexpected error:', e && e.message ? e.message : e);
+      alert('An unexpected error occurred while printing. See console for details.');
+    }
   };
 
   return (
