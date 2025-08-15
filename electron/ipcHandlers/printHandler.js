@@ -7,63 +7,79 @@ const path = require('path');
 
 let printerModule = null;
 try {
-  // optional native module used by node-thermal-printer for 'printer:' interface
-  printerModule = require('printer');
+  printerModule = require('printer'); // native module
+  console.log('Printer module loaded successfully');
 } catch (err) {
-  console.warn('printer native module not installed or failed to load:', err && err.message ? err.message : String(err));
+  console.error('Failed to load "printer" module:', err.message);
 }
 
 ipcMain.handle('print-receipt', async (event, receiptData = {}) => {
   console.log('print receipt: receiptData:', receiptData);
+
+  // Fail early if driver not loaded
+  if (!printerModule) {
+    const msg = 'Printer module not loaded. Please install & rebuild the "printer" package for Electron.';
+    console.error(msg);
+    return { success: false, error: msg };
+  }
+
+  // Try to detect default Windows printer
+  let printerName = null;
   try {
-    // try to get default Windows printer name
-    let printerName = null;
-    try {
-      const out = execSync('wmic printer get name,default | findstr /C:"TRUE"').toString().trim();
-      if (out) {
-        const lines = out.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-        const trueLine = lines.find(l => /TRUE$/i.test(l));
-        if (trueLine) {
-          printerName = trueLine.replace(/TRUE$/i, '').trim();
-        }
+    const out = execSync('wmic printer get name,default | findstr /C:"TRUE"').toString().trim();
+    if (out) {
+      const lines = out.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const trueLine = lines.find(l => /TRUE/i.test(l));
+      if (trueLine) {
+        printerName = trueLine.replace(/TRUE/i, '').trim();
       }
-    } catch (e) {
-      console.warn('Failed to query default printer via wmic:', e && e.message ? e.message : String(e));
     }
+  } catch (e) {
+    console.warn('Failed to query default printer via WMIC:', e.message);
+  }
 
-    if (!printerName) {
-      const msg = 'No default printer found.';
-      console.error('Print error:', msg);
-      // fallback: save receipt to a temp file for debugging/testing
-      const dumpPath = path.join(os.tmpdir(), `receipt-${Date.now()}.txt`);
-      const text = formatReceiptText(receiptData);
-      fs.writeFileSync(dumpPath, text, 'utf8');
-      console.log('Receipt saved to', dumpPath);
-      return { success: false, error: msg, savedTo: dumpPath };
-    }
+  if (!printerName) {
+    const msg = 'No default printer found.';
+    console.error(msg);
+    // Save receipt to file for debugging
+    const dumpPath = path.join(os.tmpdir(), `receipt-${Date.now()}.txt`);
+    fs.writeFileSync(dumpPath, formatReceiptText(receiptData), 'utf8');
+    return { success: false, error: msg, savedTo: dumpPath };
+  }
 
-    if (!printerModule) {
-      const msg = 'Printer native module not installed. Install "printer" npm package and rebuild for Electron.';
-      console.error('Print error:', msg);
-      return { success: false, error: msg };
-    }
-
-    const printer = new ThermalPrinter({
+  // Create ThermalPrinter instance
+  let printer;
+  try {
+    printer = new ThermalPrinter({
       type: PrinterTypes.EPSON,
       interface: `printer:${printerName}`,
+      driver: printerModule, // pass the loaded driver
       characterSet: CharacterSet.PC852_LATIN2,
       removeSpecialCharacters: false,
       lineCharacter: '='
     });
+    console.log(`ThermalPrinter instance created for "${printerName}"`);
+  } catch (err) {
+    const msg = `Failed to create ThermalPrinter instance: ${err.message}`;
+    console.error(msg);
+    return { success: false, error: msg };
+  }
 
-    const isConnected = await printer.isPrinterConnected();
-    if (!isConnected) {
-      const msg = `Printer "${printerName}" not connected.`;
-      console.error('Print error:', msg);
-      return { success: false, error: msg };
-    }
+  // Check connection
+  let isConnected = false;
+  try {
+    isConnected = await printer.isPrinterConnected();
+  } catch (err) {
+    console.error('Error checking printer connection:', err.message);
+  }
+  if (!isConnected) {
+    const msg = `Printer "${printerName}" not connected or not responding.`;
+    console.error(msg);
+    return { success: false, error: msg };
+  }
 
-    // Build receipt
+  // Now safe to print
+  try {
     printer.clear();
     printer.alignCenter();
     printer.bold(true).println('Puwasa Bookshop').bold(false);
@@ -99,13 +115,14 @@ ipcMain.handle('print-receipt', async (event, receiptData = {}) => {
     await printer.execute();
     console.log('Print job sent successfully to', printerName);
     return { success: true, printer: printerName };
-  } catch (error) {
-    console.error('Print error:', error && error.message ? error.message : String(error));
-    return { success: false, error: error && error.message ? error.message : String(error) };
+
+  } catch (err) {
+    console.error('Error during printing:', err.message);
+    return { success: false, error: err.message };
   }
 });
 
-// helper to dump readable receipt text for fallback
+// Helper for fallback receipt file
 function formatReceiptText(receiptData = {}) {
   let lines = [];
   lines.push('Puwasa Bookshop');
