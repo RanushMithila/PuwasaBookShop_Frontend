@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const SearchResults = ({ 
   results = [], 
@@ -8,20 +8,29 @@ const SearchResults = ({
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(-1);
 
+  // Reset selection when results change
+  useEffect(() => {
+    setSelectedIndex(-1);
+  }, [results, searchQuery]);
+
   // Handle keyboard navigation
   const handleKeyDown = (e, index) => {
     if (e.key === 'Enter') {
-      handleItemSelect(results[index]);
+      if (index >= 0 && results[index]) {
+        handleItemSelect(results[index], index);
+      }
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex(Math.min(selectedIndex + 1, results.length - 1));
+      setSelectedIndex(prev => Math.min(prev + 1, results.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex(Math.max(selectedIndex - 1, -1));
+      setSelectedIndex(prev => Math.max(prev - 1, -1));
     }
   };
 
-  const handleItemSelect = (item) => {
+  const handleItemSelect = (item, index = -1) => {
+    console.log('Item selected:', item);
+    if (index >= 0) setSelectedIndex(index);
     if (onItemSelect) {
       onItemSelect(item);
     }
@@ -64,12 +73,24 @@ const SearchResults = ({
           {results.map((item, index) => (
             <div
               key={item.id || item.barcode || index}
+              role="button"
+              aria-pressed={selectedIndex === index}
               className={`
                 flex items-center p-3 cursor-pointer border-b border-gray-100 last:border-b-0
                 hover:bg-blue-50 transition-colors duration-150
                 ${selectedIndex === index ? 'bg-blue-50 border-blue-200' : ''}
               `}
-              onClick={() => handleItemSelect(item)}
+              // Use onMouseDown to handle selection before input blur/unmount
+              onMouseDown={(e) => {
+                e.preventDefault();
+                console.log('MouseDown on item:', item);
+                handleItemSelect(item, index);
+              }}
+              // Keep onClick as fallback
+              onClick={(e) => {
+                console.log('Click on item:', item);
+                handleItemSelect(item, index);
+              }}
               onKeyDown={(e) => handleKeyDown(e, index)}
               tabIndex={0}
             >
@@ -82,7 +103,9 @@ const SearchResults = ({
                     className="w-full h-full object-cover rounded"
                     onError={(e) => {
                       e.target.style.display = 'none';
-                      e.target.nextSibling.style.display = 'flex';
+                      if (e.target.nextSibling) {
+                        e.target.nextSibling.style.display = 'flex';
+                      }
                     }}
                   />
                 ) : null}
