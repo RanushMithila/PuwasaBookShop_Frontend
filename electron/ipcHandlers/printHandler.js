@@ -1,52 +1,78 @@
 const { ipcMain } = require('electron');
-const { ThermalPrinter, PrinterTypes, CharacterSet } = require('node-thermal-printer');
-const { execSync } = require('child_process');
-const fs = require('fs');
-const os = require('os');
+const { execFile } = require('child_process');
 const path = require('path');
 
-let printerModule = null;
+// Optional native printer module (not required for Python path)
 try {
-  printerModule = require('printer'); // native module
+  // eslint-disable-next-line import/no-extraneous-dependencies, global-require
+  require('printer');
   console.log('Printer module loaded successfully');
 } catch (err) {
-  console.error('Failed to load "printer" module:', err.message);
+  console.warn('Printer module not available (optional):', err.message);
+}
+
+function runPythonPrint(receiptData) {
+  const scriptPath = path.join(__dirname, 'printing', 'main.py');
+  const payload = JSON.stringify(receiptData || {});
+  const isWin = process.platform === 'win32';
+
+  const candidates = isWin
+    ? [
+        { cmd: 'py', args: ['-3'] },
+        { cmd: 'py', args: [] },
+        { cmd: 'python', args: [] },
+        { cmd: 'python3', args: [] },
+      ]
+    : [
+        { cmd: 'python3', args: [] },
+        { cmd: 'python', args: [] },
+      ];
+
+  return new Promise((resolve, reject) => {
+    const tryNext = (index = 0) => {
+      if (index >= candidates.length) {
+        reject(new Error('No suitable Python interpreter found on PATH.'));
+        return;
+      }
+
+      const { cmd, args } = candidates[index];
+      const finalArgs = [...args, scriptPath, payload];
+
+      execFile(cmd, finalArgs, { windowsHide: true, timeout: 60000 }, (error, stdout, stderr) => {
+        const out = (stdout || '').toString().trim();
+        const errOut = (stderr || '').toString().trim();
+
+        if (!error) {
+          let printer;
+          const m = /Print job sent successfully to\s+(.+)/i.exec(out);
+          if (m && m[1]) printer = m[1].trim();
+          resolve({ success: true, printer, message: out });
+          return;
+        }
+
+        // If interpreter not found or generic failure, try next candidate; otherwise surface error
+        const code = typeof error.code === 'number' ? error.code : undefined;
+        const msg = errOut || out || error.message || 'Python execution failed.';
+
+        // 1/127 often indicate command not found; keep trying.
+        if (code === 1 || code === 127) {
+          tryNext(index + 1);
+          return;
+        }
+        reject(new Error(msg));
+      });
+    };
+    tryNext(0);
+  });
 }
 
 ipcMain.handle('print-receipt', async (event, receiptData = {}) => {
   console.log('print receipt: receiptData:', receiptData);
-
   try {
-    const out = execSync('./printing/main.py', { input: JSON.stringify(receiptData) }).toString().trim();
-    if (out) {
-      console.log('print receipt: python output:', out);
-      return { success: true, savedTo: out };
-    }
+    const result = await runPythonPrint(receiptData);
+    return result;
   } catch (e) {
-    console.warn('Failed to query default printer via WMIC:', e.message);
+    console.error('print receipt: failed:', e?.message || e);
+    return { success: false, error: e?.message || String(e) };
   }
-    console.log('Print job sent successfully to', printerName);
-    return { success: true, printer: printerName };
 });
-
-// Helper for fallback receipt file
-function formatReceiptText(receiptData = {}) {
-  let lines = [];
-  lines.push('Puwasa Bookshop');
-  lines.push(`Date: ${new Date().toLocaleString()}`);
-  lines.push(`Bill ID: ${receiptData.billId || 'N/A'}`);
-  lines.push('----------------------------------------');
-  (receiptData.items || []).forEach(i => {
-    const qty = Number(i.QTY || i.quantity || 0);
-    const unit = Number(i.itemUnitPrice || i.price || 0);
-    const total = qty * unit || 0;
-    lines.push(`${i.itemName || i.name || 'N/A'}\t${qty} x ${unit.toFixed(2)}\t${total.toFixed(2)}`);
-  });
-  lines.push('----------------------------------------');
-  lines.push(`Subtotal: ${(Number(receiptData.subtotal) || 0).toFixed(2)}`);
-  lines.push(`Discount: ${(Number(receiptData.discount) || 0).toFixed(2)}`);
-  lines.push(`TOTAL: ${(Number(receiptData.total) || 0).toFixed(2)}`);
-  lines.push('');
-  lines.push('Thank you for your purchase!');
-  return lines.join(os.EOL);
-}
