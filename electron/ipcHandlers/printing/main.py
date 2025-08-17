@@ -55,6 +55,7 @@ if __name__ == "__main__":
     try:
         data = json.loads(sys.argv[1])
         print_to_default_printer(data)
+        print("Print job sent successfully to", win32print.GetDefaultPrinter())
         sys.exit(0)
     except Exception as e:
         print("Error:", e)
