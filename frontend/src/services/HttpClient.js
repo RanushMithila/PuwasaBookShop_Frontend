@@ -3,6 +3,106 @@ import useTokenStore from '../store/TokenStore';
 class HttpClient {
   constructor() {
     this.baseURL = '/api/v1';
+    this.isRefreshing = false;
+    this.failedQueue = [];
+  }
+
+  // Process failed requests after token refresh
+  processQueue(error, token = null) {
+    this.failedQueue.forEach(({ resolve, reject }) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve(token);
+      }
+    });
+    
+    this.failedQueue = [];
+  }
+
+  // Refresh token method
+  async refreshAccessToken() {
+    try {
+      const tokenStore = useTokenStore.getState();
+      const refreshToken = tokenStore.refreshToken;
+
+      console.log('=== HTTPCLIENT TOKEN REFRESH DEBUG ===');
+      console.log('Current tokens in HttpClient:', {
+        accessToken: tokenStore.accessToken ? `${tokenStore.accessToken.substring(0, 20)}...` : 'null',
+        refreshToken: refreshToken ? `${refreshToken.substring(0, 20)}...` : 'null',
+        hasAccessToken: !!tokenStore.accessToken,
+        hasRefreshToken: !!refreshToken
+      });
+
+      if (!refreshToken) {
+        console.error('❌ No refresh token available');
+        throw new Error('No refresh token available');
+      }
+
+      console.log('✅ Making refresh request with query parameter...');
+      
+      // Send refresh token as query parameter
+      const refreshUrl = `${this.baseURL}/auth/refresh-token?refresh_token=${encodeURIComponent(refreshToken)}`;
+      
+      console.log('📤 Refresh request details:', {
+        url: `${this.baseURL}/auth/refresh-token?refresh_token=[HIDDEN]`,
+        method: 'POST',
+        contentType: 'application/json'
+      });
+
+      const response = await fetch(refreshUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log('📥 Refresh response status:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Refresh request failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorBody: errorText
+        });
+        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      
+      console.log('📥 Refresh response data:', {
+        hasData: !!data,
+        hasAccessToken: !!(data && data.access_token),
+        tokenType: data?.token_type || 'not provided',
+        dataKeys: data ? Object.keys(data) : []
+      });
+
+      if (data && data.access_token) {
+        tokenStore.updateAccessToken(data.access_token);
+        console.log('✅ Access token updated successfully via HttpClient');
+        console.log('🎯 New token preview:', `${data.access_token.substring(0, 20)}...`);
+        return data.access_token;
+      } else {
+        console.error('❌ Invalid response structure:', data);
+        throw new Error('Invalid response from refresh token endpoint');
+      }
+    } catch (error) {
+      console.error('❌ HttpClient token refresh failed:', error);
+      console.error('Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack?.substring(0, 200) + '...'
+      });
+      
+      const tokenStore = useTokenStore.getState();
+      tokenStore.clearTokens();
+      throw error;
+    }
   }
 
   // Check if user is authenticated
@@ -97,11 +197,41 @@ class HttpClient {
     return headers;
   }
 
-  // Enhanced response handler
-  async handleResponse(response) {
+  // Enhanced response handler with automatic token refresh
+  async handleResponse(response, originalRequest = null) {
     if (response.status === 401) {
-      this.redirectToLogin('Token expired or invalid');
-      throw new Error('Authentication failed');
+      // Token might be expired, try to refresh
+      if (originalRequest && !originalRequest._retry) {
+        if (this.isRefreshing) {
+          // If already refreshing, queue the request
+          return new Promise((resolve, reject) => {
+            this.failedQueue.push({ resolve, reject });
+          }).then(() => {
+            // Retry the original request with new token
+            return this.retryRequest(originalRequest);
+          });
+        }
+
+        originalRequest._retry = true;
+        this.isRefreshing = true;
+
+        try {
+          const newToken = await this.refreshAccessToken();
+          this.isRefreshing = false;
+          this.processQueue(null, newToken);
+          
+          // Retry the original request with new token
+          return this.retryRequest(originalRequest);
+        } catch (refreshError) {
+          this.isRefreshing = false;
+          this.processQueue(refreshError, null);
+          this.redirectToLogin('Token refresh failed');
+          throw new Error('Authentication failed');
+        }
+      } else {
+        this.redirectToLogin('Token expired or invalid');
+        throw new Error('Authentication failed');
+      }
     }
 
     if (!response.ok) {
@@ -117,17 +247,32 @@ class HttpClient {
     return await response.text();
   }
 
+  // Retry a failed request with new token
+  async retryRequest(originalRequest) {
+    const tokenStore = useTokenStore.getState();
+    const token = tokenStore.accessToken;
+    
+    if (originalRequest.headers) {
+      originalRequest.headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetch(originalRequest.url, originalRequest);
+    return await this.handleResponse(response);
+  }
+
   // GET request
   async get(endpoint, includeAuth = true) {
     try {
       console.log('Making GET request to:', `${this.baseURL}${endpoint}`);
       
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
+      const requestConfig = {
         method: 'GET',
         headers: this.getHeaders(includeAuth),
-      });
+        url: `${this.baseURL}${endpoint}`,
+      };
 
-      return await this.handleResponse(response);
+      const response = await fetch(requestConfig.url, requestConfig);
+      return await this.handleResponse(response, requestConfig);
     } catch (error) {
       console.error('GET request failed:', error);
       throw error;
@@ -139,13 +284,15 @@ class HttpClient {
     try {
       console.log('Making POST request to:', `${this.baseURL}${endpoint}`);
       
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
+      const requestConfig = {
         method: 'POST',
         headers: this.getHeaders(includeAuth),
         body: JSON.stringify(data),
-      });
+        url: `${this.baseURL}${endpoint}`,
+      };
 
-      return await this.handleResponse(response);
+      const response = await fetch(requestConfig.url, requestConfig);
+      return await this.handleResponse(response, requestConfig);
     } catch (error) {
       console.error('POST request failed:', error);
       throw error;
@@ -157,13 +304,15 @@ class HttpClient {
     try {
       console.log('Making POST form request to:', `${this.baseURL}${endpoint}`);
       
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
+      const requestConfig = {
         method: 'POST',
         headers: this.getFormHeaders(includeAuth),
         body: formData,
-      });
+        url: `${this.baseURL}${endpoint}`,
+      };
 
-      return await this.handleResponse(response);
+      const response = await fetch(requestConfig.url, requestConfig);
+      return await this.handleResponse(response, requestConfig);
     } catch (error) {
       console.error('POST form request failed:', error);
       throw error;

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import useBillingStore from '../store/BillingStore';
 import useAuthStore from '../store/AuthStore';
-import { createBill, addBillDetails, completeBill } from '../services/BillingService'; // Ensure this import exists
+import { createBill, addBillDetails, completeBill } from '../services/BillingService';
+import { useSearch } from '../contexts/SearchContext';
 
 const SummaryBox = () => {
   console.log('Electron API:', window.electron);
   const [isProcessing, setIsProcessing] = useState(false);
+  const { hideSearchResults } = useSearch();
 
   const { user, location } = useAuthStore.getState();
   const {
@@ -26,6 +28,9 @@ const SummaryBox = () => {
   const totalItems = getTotalItems();
 
   const handlePayAndPrintReceipt = async () => {
+    // Hide search results when Pay Now is clicked
+    hideSearchResults();
+
     if (selectedItems.length === 0) {
       alert('No items in cart.');
       return;
@@ -78,21 +83,29 @@ const SummaryBox = () => {
     }
   };
 
+  const handleHoldBill = () => {
+    // Hide search results when Hold Bill is clicked
+    hideSearchResults();
+    
+    // Add your hold bill logic here
+    processBill(false);
+  };
+
   return (
     <div className="space-y-4 p-4 bg-white h-full flex flex-col">
       <h2 className="text-xl font-bold mb-4">Order Summary</h2>
 
       <div className="flex-grow space-y-2">
         <div className="flex justify-between text-sm"><span>Total Items:</span><span className="font-medium">{totalItems}</span></div>
-        <div className="flex justify-between text-sm"><span>Subtotal:</span><span className="font-medium">${subtotal.toFixed(2)}</span></div>
-        {totalDiscount > 0 && (<div className="flex justify-between text-sm text-green-600"><span>Discount:</span><span className="font-medium">-${totalDiscount.toFixed(2)}</span></div>)}
+        <div className="flex justify-between text-sm"><span>Subtotal:</span><span className="font-medium">Rs:{subtotal.toFixed(2)}</span></div>
+        {totalDiscount > 0 && (<div className="flex justify-between text-sm text-green-600"><span>Discount:</span><span className="font-medium">-Rs:{totalDiscount.toFixed(2)}</span></div>)}
         <hr className="my-2" />
-        <div className="flex justify-between text-lg font-bold"><span>Total:</span><span>${total.toFixed(2)}</span></div>
+        <div className="flex justify-between text-lg font-bold"><span>Total:</span><span>Rs:{total.toFixed(2)}</span></div>
       </div>
 
       <div className="space-y-2 pt-4">
         <button
-          onClick={() => processBill(false)}
+          onClick={handleHoldBill}
           disabled={isProcessing || selectedItems.length === 0}
           className="w-full bg-yellow-500 text-white py-3 px-4 rounded-lg font-semibold hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
         >

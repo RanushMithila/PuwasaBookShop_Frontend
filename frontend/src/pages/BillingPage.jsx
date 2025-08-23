@@ -6,6 +6,7 @@ import useBillingStore from '../store/BillingStore';
 import { useEffect, useRef } from 'react';
 import { getItemByBarcode } from '../services/InventoryService';
 import Receipt from '../components/Receipt';
+import { SearchProvider } from '../contexts/SearchContext';
 
 const BillingPage = () => {
   const selectedItems = useBillingStore((state) => state.selectedItems);
@@ -121,7 +122,7 @@ const BillingPage = () => {
   };
 
   return (
-    <>
+    <SearchProvider>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-col flex-grow p-4 bg-gray-100">
@@ -168,7 +169,7 @@ const BillingPage = () => {
           <Receipt items={selectedItems} />
         </div>
       </div>
-    </>
+    </SearchProvider>
   );
 };
 

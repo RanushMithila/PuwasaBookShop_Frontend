@@ -1,14 +1,40 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import SearchResults from './SearchResults';
 import { searchItemsByName } from '../services/InventoryService';
+import { useSearch } from '../contexts/SearchContext';
 
-const SearchBar = ({ onItemSelect, placeholder = "Search books by title, author, ISBN..." }) => {
+const SearchBar = forwardRef(({ onItemSelect, placeholder = "Search books by title, author, ISBN..." }, ref) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [error, setError] = useState(null);
   const searchInputRef = useRef(null);
+  const searchContainerRef = useRef(null);
+  const { registerSearchBar } = useSearch();
+
+  // Expose methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    hideResults: () => {
+      setShowResults(false);
+      setSearchQuery('');
+      setError(null);
+    },
+    focus: () => {
+      searchInputRef.current?.focus();
+    }
+  }));
+
+  // Register this SearchBar with the context
+  useEffect(() => {
+    registerSearchBar({
+      hideResults: () => {
+        setShowResults(false);
+        setSearchQuery('');
+        setError(null);
+      }
+    });
+  }, [registerSearchBar]);
 
   // Debounce search function
   useEffect(() => {
@@ -24,6 +50,20 @@ const SearchBar = ({ onItemSelect, placeholder = "Search books by title, author,
 
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+        setShowResults(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleSearch = async (query) => {
     if (!query.trim()) {
@@ -165,7 +205,7 @@ const SearchBar = ({ onItemSelect, placeholder = "Search books by title, author,
   };
 
   return (
-    <div className="relative w-full">
+    <div ref={searchContainerRef} className="relative w-full">
       <div className="relative">
         <input
           ref={searchInputRef}
@@ -225,6 +265,8 @@ const SearchBar = ({ onItemSelect, placeholder = "Search books by title, author,
       )}
     </div>
   );
-};
+});
+
+SearchBar.displayName = 'SearchBar';
 
 export default SearchBar;

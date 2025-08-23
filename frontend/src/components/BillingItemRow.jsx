@@ -42,7 +42,7 @@ const BillingItemRow = ({ item, onDoubleClick }) => {
       </div>
       
       <div className="flex items-center">
-        ${(item.itemUnitPrice || 0).toFixed(2)}
+        Rs: {(item.itemUnitPrice || 0).toFixed(2)}
       </div>
       
       <div className="flex items-center">
@@ -52,15 +52,16 @@ const BillingItemRow = ({ item, onDoubleClick }) => {
           value={quantity}
           onChange={(e) => handleQuantityChange(e.target.value)}
           className="w-16 px-2 py-1 border rounded text-center"
-          onClick={(e) => e.stopPropagation()} // Prevent double-click when editing
+          onClick={(e) => e.stopPropagation()} // Prevent click events from bubbling
+          onDoubleClick={(e) => e.stopPropagation()} // Prevent double-click from removing item
         />
       </div>
       
       <div className="flex items-center font-medium">
-        ${finalAmount.toFixed(2)}
+        Rs: {finalAmount.toFixed(2)}
         {discount > 0 && (
           <span className="text-xs text-green-600 ml-1">
-            (-${discountAmount.toFixed(2)})
+            (-Rs: {discountAmount.toFixed(2)})
           </span>
         )}
       </div>
@@ -75,7 +76,8 @@ const BillingItemRow = ({ item, onDoubleClick }) => {
           onChange={(e) => handleDiscountChange(e.target.value)}
           className="w-16 px-2 py-1 border rounded text-center"
           placeholder="0"
-          onClick={(e) => e.stopPropagation()} // Prevent double-click when editing
+          onClick={(e) => e.stopPropagation()} // Prevent click events from bubbling
+          onDoubleClick={(e) => e.stopPropagation()} // Prevent double-click from removing item
         />
         <span className="text-xs text-gray-500 ml-1">%</span>
       </div>

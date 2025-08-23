@@ -22,7 +22,7 @@ const Receipt = React.forwardRef(({ items = [], total = 0, discount = 0, netTota
               <td>{item.name || 'N/A'}</td>
               <td className="text-right">{item.quantity || 0}</td>
               <td className="text-right">
-                {(item.price && item.quantity ? item.price * item.quantity : 0).toFixed(2)}
+                Rs: {(item.price && item.quantity ? item.price * item.quantity : 0).toFixed(2)}
               </td>
             </tr>
           ))}
@@ -32,15 +32,15 @@ const Receipt = React.forwardRef(({ items = [], total = 0, discount = 0, netTota
       <div className="mt-2">
         <div className="flex justify-between">
           <span>Subtotal:</span>
-          <span>{total.toFixed(2)}</span>
+          <span>Rs: {total.toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
           <span>Discount:</span>
-          <span>{discount.toFixed(2)}</span>
+          <span>Rs: {discount.toFixed(2)}</span>
         </div>
         <div className="flex justify-between font-bold border-t border-black pt-1 mt-1">
           <span>Total:</span>
-          <span>{netTotal.toFixed(2)}</span>
+          <span>Rs: {netTotal.toFixed(2)}</span>
         </div>
       </div>
 

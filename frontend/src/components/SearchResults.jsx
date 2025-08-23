@@ -20,7 +20,7 @@ const SearchResults = ({
         handleItemSelect(results[index], index);
       }
     } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
+      e.preventDefault(); 
       setSelectedIndex(prev => Math.min(prev + 1, results.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
@@ -162,11 +162,11 @@ const SearchResults = ({
                   {/* Price */}
                   <div className="text-right flex-shrink-0">
                     <div className="font-semibold text-green-600">
-                      ${(item.price || 0).toFixed(2)}
+                      Rs: {(item.price || 0).toFixed(2)}
                     </div>
                     {item.discount_price && item.discount_price < item.price && (
                       <div className="text-xs text-gray-500 line-through">
-                        ${item.price.toFixed(2)}
+                        Rs: {item.price.toFixed(2)}
                       </div>
                     )}
                   </div>
