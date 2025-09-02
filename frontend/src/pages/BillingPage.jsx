@@ -1,4 +1,3 @@
-import Sidebar from '../components/Sidebar';
 import SearchBar from '../components/SearchBar';
 import SummaryBox from '../components/SummaryBox';
 import BillingItemRow from '../components/BillingItemRow';
@@ -124,7 +123,6 @@ const BillingPage = () => {
   return (
     <SearchProvider>
       <div className="flex h-screen overflow-hidden">
-        <Sidebar />
         <div className="flex flex-col flex-grow p-4 bg-gray-100">
           <SearchBar onItemSelect={handleItemSelect} />
           <div className="overflow-y-auto bg-white rounded shadow mt-4 px-4 py-2 flex-grow">

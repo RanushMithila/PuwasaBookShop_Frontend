@@ -236,7 +236,22 @@ class HttpClient {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
+      
+      // Create an enhanced error with status code
+      const error = new Error(`HTTP ${response.status}: ${errorText}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      
+      // Handle specific status codes
+      if (response.status === 404) {
+        error.message = 'Item not found (404)';
+      } else if (response.status === 400) {
+        error.message = 'Bad request (400)';
+      } else if (response.status === 500) {
+        error.message = 'Server error (500)';
+      }
+      
+      throw error;
     }
 
     const contentType = response.headers.get('content-type');
