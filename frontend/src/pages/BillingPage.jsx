@@ -1,165 +1,597 @@
-import SearchBar from '../components/SearchBar';
-import SummaryBox from '../components/SummaryBox';
+import { useEffect, useRef, useState } from 'react';
+import debounce from 'lodash.debounce';
 import BillingItemRow from '../components/BillingItemRow';
+import SummaryBox from '../components/SummaryBox';
 import useBillingStore from '../store/BillingStore';
-import { useEffect, useRef } from 'react';
-import { getItemByBarcode } from '../services/InventoryService';
 import Receipt from '../components/Receipt';
-import { SearchProvider } from '../contexts/SearchContext';
+import CashInOutModal from '../components/CashInOutModal';
+import CashCountModal from '../components/CashCountModal';
+import TemporaryBillsModal from '../components/TemporaryBillsModal';
+import useTokenStore from '../store/TokenStore';
+import {
+  createBill,
+  addBillDetails,
+  completeBill,
+  getItemByBarcode,
+  getItemQuantity,
+  getBill,
+  cancelBill,
+  getTemporaryBills,
+} from '../services/BillingService';
+import { getInventory } from '../services/InventoryService';
 
 const BillingPage = () => {
-  const selectedItems = useBillingStore((state) => state.selectedItems);
-  const addItem = useBillingStore((state) => state.addItem);
-  const removeItem = useBillingStore((state) => state.removeItem);
+  // Billing store
+  const selectedItems = useBillingStore((s) => s.selectedItems);
+  const addItem = useBillingStore((s) => s.addItem);
+  const removeItem = useBillingStore((s) => s.removeItem);
+  const setCurrentBillId = useBillingStore((s) => s.setCurrentBillId);
+  const resetTransaction = useBillingStore((s) => s.resetTransaction);
+  const currentBillId = useBillingStore((s) => s.currentBillId);
+
+  // Token store
+  const accessToken = useTokenStore((s) => s.accessToken);
+
+  // UI state
+  const [showCashInOut, setShowCashInOut] = useState(false);
+  const [showCashCount, setShowCashCount] = useState(false);
+  const [showTemporaryBills, setShowTemporaryBills] = useState(false);
+  const [temporaryBills, setTemporaryBills] = useState([]);
+  const [loadingTempBills, setLoadingTempBills] = useState(false);
+  const [tempBillsError, setTempBillsError] = useState('');
+
+  // Customer
+  const [customerName, setCustomerName] = useState('Saman');
+  const [customerPhone, setCustomerPhone] = useState('+1234567890');
+
+  // Search / item code and suggestions
+  const [itemCode, setItemCode] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+
+  // Payment
+  const [cashPayAmount, setCashPayAmount] = useState('');
+  const [cardAmount, setCardAmount] = useState('');
+  const [creditBalance, setCreditBalance] = useState(0);
+  const [userEditedCash, setUserEditedCash] = useState(false);
+  const [userEditedCard, setUserEditedCard] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false); // API actions (save/complete)
+  const [isPrinting, setIsPrinting] = useState(false); // External print/python action
 
   const receiptRef = useRef();
+  const itemCodeRef = useRef();
+  const cashInputRef = useRef();
+  const rowRefs = useRef(new Map());
 
+  // Computed totals from store
+  const subtotal = useBillingStore((s) => s.getSubtotal());
+  const totalDiscount = useBillingStore((s) => s.getTotalDiscount());
+  const total = useBillingStore((s) => s.getTotal());
+  const itemCount = useBillingStore((s) => s.getTotalItems());
+
+  // --- JWT decode helpers ---
+  const decodeJWT = (token) => {
+    if (!token || typeof token !== 'string' || token.split('.').length < 2) return null;
+    try {
+      const base64Url = token.split('.')[1];
+      // Base64URL -> Base64
+      let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      // Pad if needed
+      const pad = base64.length % 4;
+      if (pad) base64 += '='.repeat(4 - pad);
+      const json = atob(base64);
+      return JSON.parse(json);
+    } catch (err) {
+      console.warn('Failed to decode JWT:', err);
+      return null;
+    }
+  };
+
+  const extractRole = (token) => {
+    const payload = decodeJWT(token);
+    if (!payload) return 'USER';
+    return payload.role || payload.Role || payload.roles || payload.authorities || 'USER';
+  };
+
+  const loginRole = extractRole(accessToken);
+
+  // Removed automatic bill creation on mount to avoid empty placeholder bills.
+
+  // Focus Item Code input on mount (page load or after navigation)
   useEffect(() => {
-    let buffer = '';
-    let lastTime = Date.now();
+    const t = setTimeout(() => itemCodeRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, []);
 
-    const onKeyDown = (e) => {
-      const currentTime = Date.now();
-
-      if (currentTime - lastTime > 100) buffer = '';
-
-      if (e.key === 'Enter') {
-        if (buffer.length >= 5) {
-          getItemByBarcode(buffer, 1).then((res) => {
-            res.forEach((item) => {
-              addItem({
-                inventoryID: item.id,
-                itemName: item.title,
-                itemUnitPrice: item.price,
-                itemCostPrice: item.cost_price,
-                barcode: item.barcode,
-                itemDescription: item.author,
-                itemCategory: item.category,
-                locationID: item.location_id,
-                QTY: 1,
-                Discount: 0,
-                amount: item.price,
-              });
-            });
-          });
+  // Item code search with keyboard navigation
+  useEffect(() => {
+    const handler = (e) => {
+      if (!suggestions || suggestions.length === 0) return;
+      if (e.key === 'ArrowDown') {
+        setHighlightIndex((i) => Math.min(suggestions.length - 1, i + 1));
+      } else if (e.key === 'ArrowUp') {
+        setHighlightIndex((i) => Math.max(-1, i - 1));
+      } else if (e.key === 'Enter') {
+        if (highlightIndex >= 0 && suggestions[highlightIndex]) {
+          selectSuggestedItem(suggestions[highlightIndex]);
+        } else if (itemCode.trim()) {
+          // fallback: search by barcode
+          searchBarcode(itemCode.trim());
         }
-        buffer = '';
-      } else {
-        buffer += e.key;
       }
-
-      lastTime = currentTime;
     };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // only depends on suggestions/highlightIndex
+  }, [suggestions, highlightIndex, itemCode]);
 
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [addItem]);
+  // Auto-search when user types at least 3 characters (debounced)
+  useEffect(() => {
+    const doSearch = debounce((val) => {
+      if (val && val.length >= 3) {
+        searchBarcode(val);
+      } else {
+        setSuggestions([]);
+      }
+    }, 250);
 
-  const handleItemSelect = (item) => {
+    doSearch(itemCode);
+    return () => doSearch.cancel();
+  }, [itemCode]);
+
+  const searchBarcode = async (code) => {
+    try {
+      const resp = await getItemByBarcode(code, 1);
+      if (resp && resp.status === true && Array.isArray(resp.data)) {
+        setSuggestions(resp.data);
+        setHighlightIndex(0);
+      } else {
+        setSuggestions([]);
+      }
+    } catch (err) {
+      console.error('Barcode search failed:', err);
+      setSuggestions([]);
+    }
+  };
+
+  const selectSuggestedItem = (item) => {
+    // Map API response fields to billing store item shape
     addItem({
-      inventoryID: item.id,
-      itemName: item.title,
-      itemUnitPrice: item.price,
-      itemCostPrice: item.cost_price,
+      inventoryID: item.inventoryID,
+      itemName: item.itemName,
+      itemUnitPrice: item.itemUnitPrice,
+      itemCostPrice: item.itemCostPrice,
       barcode: item.barcode,
-      itemDescription: item.author,
-      itemCategory: item.category,
-      locationID: item.location_id,
+      itemDescription: item.itemDescription,
+      itemCategory: item.itemCategory,
+      locationID: item.locationID,
       QTY: 1,
       Discount: 0,
-      amount: item.price,
+      amount: item.itemUnitPrice,
     });
+    setItemCode('');
+    setSuggestions([]);
+    setHighlightIndex(-1);
+    // After adding item, focus quantity of the newly added row
+    setTimeout(() => {
+      const last = useBillingStore.getState().selectedItems?.[useBillingStore.getState().selectedItems.length - 1];
+      if (last && rowRefs.current.has(last.inventoryID)) {
+        rowRefs.current.get(last.inventoryID).qtyRef.current?.focus();
+        rowRefs.current.get(last.inventoryID).qtyRef.current?.select?.();
+      }
+    }, 0);
   };
 
-  const handleItemRemove = (itemId) => {
-    removeItem(itemId);
-  };
-
-  const handlePrint = async () => {
-    if (!selectedItems || selectedItems.length === 0) {
-      console.warn('No items to print');
-      alert('No items selected to print.');
-      return;
-    }
-
-    const receiptData = {
-      items: selectedItems,
-      subtotal: useBillingStore.getState().getSubtotal(),
-      discount: useBillingStore.getState().getTotalDiscount(),
-      total: useBillingStore.getState().getTotal(),
-      billId: useBillingStore.getState().currentBillId || null,
-    };
-
+  // Save: create (if needed) -> add details -> complete; shows returned change in the sidebar
+  const handleAddDetails = async () => {
     try {
-      if (!window?.electron?.ipcRenderer) {
-        const msg = 'Electron IPC not available in this environment.';
-        console.error('print receipt:', msg);
-        alert(msg);
+      setIsProcessing(true);
+      if (!selectedItems || selectedItems.length === 0) {
+        alert('Add at least one item before saving the bill.');
+        return;
+      }
+      // Ensure bill exists (create if missing)
+      let billIdToUse = currentBillId;
+      if (!billIdToUse) {
+        const createResp = await createBill({ LocationID: 1, CustomerID: 1, CashierID: 1 });
+        if (!(createResp && createResp.status === true && createResp.data)) {
+          alert('Failed to create bill');
+          return;
+        }
+        billIdToUse = createResp.data;
+        setCurrentBillId(billIdToUse);
+      }
+
+      const itemsPayload = selectedItems.map((it) => {
+        const lineSubtotal = (it.itemUnitPrice || 0) * (it.QTY || 1);
+        const absDiscount = it.Discount || 0; // stored internally as absolute
+        const percent = lineSubtotal > 0 ? (absDiscount / lineSubtotal) * 100 : 0;
+        return {
+          InventoryID: it.inventoryID,
+          Discount: parseFloat(percent.toFixed(4)), // send percentage expected by backend
+          QTY: it.QTY || 1,
+        };
+      });
+
+      const resp = await addBillDetails({ BillID: billIdToUse, Items: itemsPayload });
+      console.log('Add details response:', resp);
+      if (!(resp && resp.status === true)) {
+        alert('Failed to save details: ' + (resp?.error_message || resp?.message || JSON.stringify(resp)));
         return;
       }
 
-      const response = await window.electron.ipcRenderer.invoke('print-receipt', receiptData);
-      console.log('print receipt response:', response);
-
-      if (response && response.success) {
-        alert('Receipt printed successfully.' + (response.printer ? `\nPrinter: ${response.printer}` : ''));
+      // Complete billing and show returned change
+      const payment = { CashAmount: parseFloat(cashPayAmount) || 0, CardAmount: parseFloat(cardAmount) || 0 };
+      const completeResp = await completeBill(billIdToUse, payment);
+      if (completeResp && completeResp.status === true) {
+        setCreditBalance(completeResp.data || 0);
       } else {
-        // show fallback info if saved to file
-        if (response && response.savedTo) {
-          alert('No default printer found. Receipt saved to: ' + response.savedTo);
-          console.info('Receipt saved to:', response.savedTo);
-        } else {
-          const err = (response && response.error) ? response.error : 'Unknown print error';
-          console.error('Failed to print receipt:', err);
-          alert('Failed to print receipt: ' + err);
-        }
+        alert('Failed to complete billing: ' + (completeResp?.error_message || completeResp?.message || JSON.stringify(completeResp)));
       }
-    } catch (e) {
-      console.error('print receipt: unexpected error:', e && e.message ? e.message : e);
-      alert('An unexpected error occurred while printing. See console for details.');
+    } catch (err) {
+      console.error('Add details failed:', err);
+      alert('Error saving bill details: ' + err.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
+  const handlePrintInvoice = async () => {
+    try {
+      setIsPrinting(true);
+      if (window?.electron?.ipcRenderer) {
+        // Trigger a simple Python example script (hello.py)
+        const result = await window.electron.ipcRenderer.invoke('run-hello', { when: new Date().toISOString() });
+        console.log('Hello script result:', result);
+      }
+    } catch (err) {
+      console.warn('Hello script invoke failed:', err);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const fetchTemporaryBillDetails = async (billId) => {
+    try {
+      const resp = await getBill(billId);
+      if (resp && resp.status === true && resp.data) {
+        // Preserve or set current bill id (don't wipe if already same)
+        if (!currentBillId || currentBillId !== resp.data.BillID) {
+          setCurrentBillId(resp.data.BillID);
+        }
+
+        // Update / merge into temporary bills array
+        setTemporaryBills((prev) => {
+          const exists = prev.some((b) => b.BillID === resp.data.BillID);
+          if (!exists) return [resp.data, ...prev];
+          return prev.map((b) => (b.BillID === resp.data.BillID ? { ...b, ...resp.data } : b));
+        });
+
+        // Clear only items then repopulate from bill Details directly (no extra inventory fetch)
+        useBillingStore.getState().clearItems();
+
+        if (Array.isArray(resp.data.Details)) {
+          // Clear current items before adding loaded bill's items
+          useBillingStore.getState().clearItems();
+          resp.data.Details.forEach((d) => {
+            const qty = d.QTY || 1;
+            const unitPrice = d.UnitPrice || d.itemUnitPrice || 0;
+            const percentDiscount = d.Discount || 0; // backend stores percent
+            const lineSubtotal = unitPrice * qty;
+            const absDiscount = parseFloat((lineSubtotal * (percentDiscount / 100)).toFixed(2));
+            addItem({
+              inventoryID: d.InventoryID,
+              itemName: d.ItemName || `Item ${d.InventoryID}`,
+              itemUnitPrice: unitPrice,
+              itemCostPrice: d.CostPrice || 0,
+              barcode: d.Barcode || d.barcode || '',
+              itemDescription: d.Description || d.ItemDescription || d.itemDescription || '',
+              itemCategory: d.Category || null,
+              locationID: resp.data.LocationID,
+              QTY: qty,
+              Discount: absDiscount, // store internally as absolute amount
+            });
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Fetch bill failed:', err);
+    }
+  };
+
+  const loadTemporaryBills = async () => {
+    setLoadingTempBills(true);
+    setTempBillsError('');
+    try {
+      const resp = await getTemporaryBills(1); // LocationID hardcoded as 1 per current flows
+      if (resp && resp.status === true && Array.isArray(resp.data)) {
+        // Replace local list with server truth; sort newest first by createdDateTime then BillID desc
+        const getTs = (x) => {
+          const d = x.createdDateTime || x.CreatedDateTime || x.createdAt || x.CreatedAt || x.created_date || x.CreatedDate || x.dateCreated || x.DateCreated || null;
+          const t = d ? new Date(d).getTime() : 0;
+          return Number.isFinite(t) ? t : 0;
+        };
+        const sorted = [...resp.data].sort((a, b) => {
+          const ta = getTs(a);
+          const tb = getTs(b);
+          if (tb !== ta) return tb - ta; // newest first
+          return (b.BillID || 0) - (a.BillID || 0);
+        });
+        setTemporaryBills(sorted);
+      } else {
+        setTempBillsError('Unexpected response loading temporary bills');
+      }
+    } catch (e) {
+      console.error('Failed to load temporary bills', e);
+      setTempBillsError(e.message || 'Failed to load');
+    } finally {
+      setLoadingTempBills(false);
+    }
+  };
+
+  // When opening the Temporary Bills modal, load the list
+  useEffect(() => {
+    if (showTemporaryBills) {
+      loadTemporaryBills();
+    }
+  }, [showTemporaryBills]);
+
+  const handleDeleteTemporaryBill = async (billId) => {
+    try {
+      const resp = await cancelBill(billId);
+      console.log('Cancel bill response:', resp);
+      if (resp && resp.status === true) {
+        // If the deleted bill is currently loaded, clear transaction
+        if (currentBillId === billId) {
+          resetTransaction();
+          setCurrentBillId(null);
+        }
+        // Refresh list from backend (no optimistic removal needed)
+        await loadTemporaryBills();
+      } else {
+        console.warn('Failed to delete temporary bill', resp);
+        setTempBillsError(resp?.error_message || resp?.message || 'Delete failed');
+      }
+    } catch (err) {
+      console.error('Delete temporary bill failed:', err);
+      setTempBillsError(err.message || 'Delete error');
+    }
+  };
+
+  // Removed auto-filling payment inputs from total; user enters amounts explicitly.
+
   return (
-    <SearchProvider>
-      <div className="flex h-screen overflow-hidden">
-        <div className="flex flex-col flex-grow p-4 bg-gray-100">
-          <SearchBar onItemSelect={handleItemSelect} />
-          <div className="overflow-y-auto bg-white rounded shadow mt-4 px-4 py-2 flex-grow">
-            <div className="grid grid-cols-5 text-sm font-semibold border-b py-2">
-              <div>Item Name</div>
-              <div>Unit Price</div>
-              <div>QTY</div>
-              <div>Amount</div>
-              <div>Discount</div>
-            </div>
-            {selectedItems.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No items selected. Search and select items to add to bill.
-                <br />
-                <small className="text-xs">Double-click on items to remove them</small>
-              </div>
-            ) : (
-              selectedItems.map((item, index) => (
-                <BillingItemRow
-                  key={item.inventoryID || `item-${index}`}
-                  item={item}
-                  onDoubleClick={() => handleItemRemove(item.inventoryID)}
+    <div className="flex h-screen overflow-hidden">
+      {/* Left: Items area */}
+      <div className="flex flex-col flex-grow p-4 bg-gray-50">
+        <div className="flex items-center gap-3">
+          <div className="flex-1"></div>
+          <button
+            onClick={() => setShowCashInOut(true)}
+            className="px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 transition"
+          >
+            Cash IN/Out
+          </button>
+          <button
+            onClick={() => setShowCashCount(true)}
+            className="px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 transition"
+          >
+            Cash Count
+          </button>
+          <div className="flex-1"></div>
+        </div>
+
+        {/* Customer row */}
+        <div className="flex items-center gap-3 mt-3">
+          <div className="flex items-center space-x-2">
+            <label className="text-sm">Customer</label>
+            <input className="border px-2 py-1 w-40" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+            <input className="border px-2 py-1 w-44" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+          </div>
+          <div className="flex-1"></div>
+        </div>
+
+        {/* Items table */}
+        <div className="overflow-y-auto bg-white rounded-xl shadow mt-4 px-2 py-2 flex-grow">
+          <div className="relative">
+            {/* Header row */}
+            <div
+              className="grid text-sm font-semibold border-b py-2 sticky top-0 bg-white z-10"
+              style={{ gridTemplateColumns: '120px 1fr 120px 70px 120px 100px', columnGap: '12px' }}
+            >
+              <div className="flex flex-col">
+                <div className="text-gray-600">Item Code</div>
+                <input
+                  className="border mt-1 px-2 py-2 w-full text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  placeholder="Scan / Type barcode"
+                  value={itemCode}
+                  ref={itemCodeRef}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    // If user types '+' we end item entry and focus cash
+                    if (val.trim() === '+') {
+                      setItemCode('');
+                      setSuggestions([]);
+                      setHighlightIndex(-1);
+                      setTimeout(() => cashInputRef.current?.focus(), 0);
+                      return;
+                    }
+                    setItemCode(val);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && itemCode.trim() && suggestions.length === 0) {
+                      // Enter on item code triggers barcode lookup fallback
+                      searchBarcode(itemCode.trim());
+                    }
+                  }}
                 />
-              ))
+              </div>
+              <div className="text-gray-600">Description</div>
+              <div className="text-gray-600">Unit Price</div>
+              <div className="text-gray-600">QTY</div>
+              <div className="text-gray-600">Amount</div>
+              <div className="text-gray-600">Discount</div>
+            </div>
+
+            {/* Overlap suggestions panel positioned over table (doesn't change table layout) */}
+            {suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 bg-white border mt-1 z-40 max-h-48 overflow-y-auto shadow">
+                {suggestions.map((s, idx) => (
+                  <div
+                    key={s.inventoryID}
+                    onClick={() => selectSuggestedItem(s)}
+                    className={`p-2 cursor-pointer ${idx === highlightIndex ? 'bg-blue-100' : ''}`}
+                  >
+                    <div className="font-semibold">{s.itemName}</div>
+                    <div className="text-xs text-gray-600">Barcode: {s.barcode} | Rs: {s.itemUnitPrice}</div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
-          <button
-            onClick={handlePrint}
-            className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 self-end"
-          >
-            Print Receipt
-          </button>
+
+          {selectedItems.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">No items selected</div>
+          ) : (
+            selectedItems.map((item, i) => (
+              <BillingItemRow
+                key={item.inventoryID || `it-${i}`}
+                item={item}
+                onDoubleClick={() => removeItem(item.inventoryID)}
+                registerRowRef={(id, refs) => {
+                  rowRefs.current.set(id, refs);
+                }}
+                onFocusItemCode={() => {
+                  itemCodeRef.current?.focus();
+                  itemCodeRef.current?.select?.();
+                }}
+              />
+            ))
+          )}
         </div>
-        <div className="w-[300px] bg-white p-4 border-l">
-          <SummaryBox />
+
+        <div className="flex justify-between items-center mt-4">
+          <div className="w-1/3">
+            {/* Placeholder left area in original design */}
+          </div>
+          <div className="text-center">
+            <div className="text-xs uppercase tracking-wide text-gray-500">Item Count</div>
+            <div className="text-5xl font-extrabold text-emerald-600 drop-shadow-sm">{itemCount}</div>
+          </div>
+          <div className="w-1/3 text-right">
+            <div className="text-xs uppercase tracking-wide text-gray-500">Total Amount</div>
+            <div className="text-3xl font-extrabold text-gray-900">Rs: {subtotal.toFixed(2)}</div>
+            <div className="text-sm text-gray-500">Discount: <span className="font-medium text-gray-700">Rs: {totalDiscount.toFixed(2)}</span></div>
+            <div className="mt-1 text-2xl font-extrabold text-emerald-700">Net: Rs: {Math.max(0, (subtotal - totalDiscount)).toFixed(2)}</div>
+          </div>
         </div>
       </div>
+
+  {/* Right: Payment and actions */}
+  <div className="w-[340px] bg-white p-4 border-l flex flex-col">
+        <div className="space-y-3">
+          <div className="text-sm font-semibold text-gray-700">Cash Pay Amount</div>
+          <input
+            className="w-full border px-4 py-3 text-base rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            value={cashPayAmount}
+            onChange={(e) => {
+              setUserEditedCash(true);
+              setCashPayAmount(e.target.value);
+            }}
+            onBlur={(e) => {
+              // Normalize format
+              if (e.target.value && !isNaN(parseFloat(e.target.value))) {
+                setCashPayAmount(parseFloat(e.target.value).toFixed(2));
+              }
+            }}
+            placeholder="0.00"
+            ref={cashInputRef}
+          />
+        </div>
+
+        <div className="space-y-3">
+          <div className="text-sm font-semibold text-gray-700">Credit Card Amount</div>
+          <input
+            className="w-full border px-4 py-3 text-base rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            value={cardAmount}
+            onChange={(e) => {
+              setUserEditedCard(true);
+              setCardAmount(e.target.value);
+            }}
+            onBlur={(e) => {
+              if (e.target.value && !isNaN(parseFloat(e.target.value))) {
+                setCardAmount(parseFloat(e.target.value).toFixed(2));
+              }
+            }}
+            placeholder="0.00"
+          />
+        </div>
+
+        <div className="space-y-8 md:space-y-10">
+            <div className="space-y-5">
+              <div className="text-sm font-semibold text-gray-700">Change / Balance Amount</div>
+              <div className="w-full border px-4 py-3 text-base rounded-lg bg-gray-50 text-gray-900">
+                Rs: {Math.abs(creditBalance).toFixed(2)}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-sm font-semibold text-gray-700">Last Bill Balance</div>
+              <div className="text-2xl font-bold text-gray-800">00.00</div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs uppercase tracking-wide text-gray-500">Role</div>
+              <div className="text-xl uppercase tracking-wide font-bold text-emerald-700">{loginRole}</div>
+            </div>
+          </div>
+
+      <div className="flex-1"></div>
+
+  <div className="space-y-2 mt-auto">
+          <button onClick={() => setShowTemporaryBills(true)} className="w-full px-3 py-2 bg-white hover:bg-sky-50 border border-sky-200 text-sky-700 rounded-lg transition">Temporary</button>
+          <button
+            onClick={handleAddDetails}
+            disabled={selectedItems.length === 0 || isProcessing}
+            className={`w-full px-3 py-2 rounded-lg flex items-center justify-center gap-2 transition ${selectedItems.length === 0 || isProcessing ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
+          >
+            {isProcessing && (
+              <span className="inline-block h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+            )}
+            <span>Save</span>
+          </button>
+          <button
+            onClick={() => handlePrintInvoice()}
+            disabled={isPrinting}
+            className={`w-full px-3 py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg flex items-center justify-center gap-2 transition ${isPrinting ? 'opacity-60 cursor-not-allowed' : ''}`}
+          >
+            {isPrinting && (
+              <span className="inline-block h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+            )}
+            <span>Print Invoice</span>
+          </button>
+          <button onClick={() => resetTransaction()} className="w-full px-3 py-2 bg-white hover:bg-red-50 border border-red-300 rounded-lg text-red-600 transition">Clear</button>
+        </div>
+      </div>
+
+      {/* Modals */}
+      <CashInOutModal isOpen={showCashInOut} onClose={() => setShowCashInOut(false)} type="in" />
+      <CashCountModal isOpen={showCashCount} onClose={() => setShowCashCount(false)} />
+      <TemporaryBillsModal
+        isOpen={showTemporaryBills}
+        onClose={() => setShowTemporaryBills(false)}
+        temporaryBills={temporaryBills}
+        loading={loadingTempBills}
+        error={tempBillsError}
+        onRefresh={loadTemporaryBills}
+        onSelectBill={(b, idx) => {
+          // fetch details and load; highlight already handled by modal
+          fetchTemporaryBillDetails(b.BillID);
+        }}
+        onDeleteBill={async (id, idx) => {
+          await handleDeleteTemporaryBill(id);
+        }}
+      />
 
       {/* Hidden printable receipt */}
       <div style={{ display: 'none' }}>
@@ -167,7 +599,15 @@ const BillingPage = () => {
           <Receipt items={selectedItems} />
         </div>
       </div>
-    </SearchProvider>
+      {(isProcessing || isPrinting) && (
+        <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-50">
+          <div className="bg-white px-4 py-3 rounded shadow flex items-center gap-3">
+            <span className="inline-block h-6 w-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-gray-700">{isProcessing ? 'Processing...' : 'Working...'}</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
