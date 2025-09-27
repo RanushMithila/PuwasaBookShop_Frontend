@@ -33,6 +33,7 @@ app.whenReady().then(() => {
 
   // Register IPC handlers
   require('./ipcHandlers/printHandler'); // Ensure this file exists and handles IPC events
+  require('./ipcHandlers/helloHandler');
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
