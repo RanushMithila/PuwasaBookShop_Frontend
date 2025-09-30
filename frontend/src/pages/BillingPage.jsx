@@ -50,8 +50,8 @@ const BillingPage = () => {
   const [highlightIndex, setHighlightIndex] = useState(-1);
 
   // Payment
-  const [cashPayAmount, setCashPayAmount] = useState('');
-  const [cardAmount, setCardAmount] = useState('');
+  const [cashPayAmount, setCashPayAmount] = useState('0.00');
+  const [cardAmount, setCardAmount] = useState('0.00');
   const [creditBalance, setCreditBalance] = useState(0);
   const [userEditedCash, setUserEditedCash] = useState(false);
   const [userEditedCard, setUserEditedCard] = useState(false);
@@ -61,6 +61,8 @@ const BillingPage = () => {
   const receiptRef = useRef();
   const itemCodeRef = useRef();
   const cashInputRef = useRef();
+  const cardInputRef = useRef();
+  const saveButtonRef = useRef();
   const rowRefs = useRef(new Map());
 
   // Computed totals from store
@@ -203,12 +205,11 @@ const BillingPage = () => {
       }
 
       const itemsPayload = selectedItems.map((it) => {
-        const lineSubtotal = (it.itemUnitPrice || 0) * (it.QTY || 1);
-        const absDiscount = it.Discount || 0; // stored internally as absolute
-        const percent = lineSubtotal > 0 ? (absDiscount / lineSubtotal) * 100 : 0;
+        // Send the raw discount value (absolute rupees) as-entered by the user.
+        // Do not convert to percentage on the client.
         return {
           InventoryID: it.inventoryID,
-          Discount: parseFloat(percent.toFixed(4)), // send percentage expected by backend
+          Discount: Number(it.Discount) || 0,
           QTY: it.QTY || 1,
         };
       });
@@ -236,6 +237,49 @@ const BillingPage = () => {
     }
   };
 
+  // Save current items as a temporary bill (create bill + add details, but do not complete)
+  const handleSaveTemporary = async () => {
+    try {
+      setIsProcessing(true);
+      if (!selectedItems || selectedItems.length === 0) {
+        alert('Add at least one item before saving the temporary bill.');
+        return;
+      }
+
+      // Create a bill first
+      const createResp = await createBill({ LocationID: 1, CustomerID: 1, CashierID: 1 });
+      if (!(createResp && createResp.status === true && createResp.data)) {
+        alert('Failed to create temporary bill');
+        return;
+      }
+      const billId = createResp.data;
+      // Prepare items payload - send raw Discount (absolute rupees)
+      const itemsPayload = selectedItems.map((it) => ({
+        InventoryID: it.inventoryID,
+        Discount: Number(it.Discount) || 0,
+        QTY: it.QTY || 1,
+      }));
+
+      const detailsResp = await addBillDetails({ BillID: billId, Items: itemsPayload });
+      if (!(detailsResp && detailsResp.status === true)) {
+        alert('Failed to save temporary bill details: ' + (detailsResp?.error_message || detailsResp?.message || JSON.stringify(detailsResp)));
+        return;
+      }
+
+      // Keep the bill id so user can resume later
+      setCurrentBillId(billId);
+      // Optionally refresh temporary bills list if modal exists
+      try { await loadTemporaryBills(); } catch (e) { /* ignore */ }
+
+      alert('Temporary bill saved (ID: ' + billId + ')');
+    } catch (err) {
+      console.error('Save temporary failed:', err);
+      alert('Error saving temporary bill: ' + (err?.message || err));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handlePrintInvoice = async () => {
     try {
       setIsPrinting(true);
@@ -243,6 +287,18 @@ const BillingPage = () => {
         // Trigger a simple Python example script (hello.py)
         const result = await window.electron.ipcRenderer.invoke('run-hello', { when: new Date().toISOString() });
         console.log('Hello script result:', result);
+        // On success, clear the current transaction so operator can start a new one
+        // Clear items, reset payment fields and balances
+        useBillingStore.getState().clearItems();
+        setCashPayAmount('0.00');
+        setCardAmount('0.00');
+        setCreditBalance(0);
+        setCurrentBillId(null);
+        // Focus item code for next transaction
+        setTimeout(() => {
+          itemCodeRef.current?.focus();
+          itemCodeRef.current?.select?.();
+        }, 0);
       }
     } catch (err) {
       console.warn('Hello script invoke failed:', err);
@@ -276,9 +332,11 @@ const BillingPage = () => {
           resp.data.Details.forEach((d) => {
             const qty = d.QTY || 1;
             const unitPrice = d.UnitPrice || d.itemUnitPrice || 0;
-            const percentDiscount = d.Discount || 0; // backend stores percent
-            const lineSubtotal = unitPrice * qty;
-            const absDiscount = parseFloat((lineSubtotal * (percentDiscount / 100)).toFixed(2));
+            const lineTotal = (unitPrice || 0) * qty;
+            // Treat backend Discount as an absolute rupee amount and do not
+            // convert it to a percentage. Clamp to line total and round to 2dp.
+            const raw = parseFloat(d.Discount || 0) || 0;
+            const absDiscount = parseFloat(Math.min(raw, lineTotal).toFixed(2));
             addItem({
               inventoryID: d.InventoryID,
               itemName: d.ItemName || `Item ${d.InventoryID}`,
@@ -358,6 +416,18 @@ const BillingPage = () => {
     }
   };
 
+  // Clear UI and transaction state (keep defaults)
+  const handleClear = () => {
+    // Reset store transaction (items, customer, currentBillId)
+    resetTransaction();
+    // Reset local payment inputs and balances
+    setCashPayAmount('0.00');
+    setCardAmount('0.00');
+    setCreditBalance(0);
+    // Focus item code for convenience
+    setTimeout(() => itemCodeRef.current?.focus(), 0);
+  };
+
   // Removed auto-filling payment inputs from total; user enters amounts explicitly.
 
   return (
@@ -377,6 +447,12 @@ const BillingPage = () => {
             className="px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 transition"
           >
             Cash Count
+          </button>
+          <button
+            onClick={() => setShowTemporaryBills(true)}
+            className="px-4 py-2 rounded-lg border border-sky-200 text-sky-700 bg-white hover:bg-sky-50 transition"
+          >
+            Temporary
           </button>
           <div className="flex-1"></div>
         </div>
@@ -498,10 +574,19 @@ const BillingPage = () => {
               setUserEditedCash(true);
               setCashPayAmount(e.target.value);
             }}
+            onFocus={(e) => e.target.select()}
             onBlur={(e) => {
               // Normalize format
               if (e.target.value && !isNaN(parseFloat(e.target.value))) {
                 setCashPayAmount(parseFloat(e.target.value).toFixed(2));
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                // Move focus to card amount input
+                e.preventDefault();
+                cardInputRef.current?.focus();
+                cardInputRef.current?.select?.();
               }
             }}
             placeholder="0.00"
@@ -518,12 +603,21 @@ const BillingPage = () => {
               setUserEditedCard(true);
               setCardAmount(e.target.value);
             }}
+            onFocus={(e) => e.target.select()}
             onBlur={(e) => {
               if (e.target.value && !isNaN(parseFloat(e.target.value))) {
                 setCardAmount(parseFloat(e.target.value).toFixed(2));
               }
             }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                // Move focus to Save button (do not click)
+                e.preventDefault();
+                saveButtonRef.current?.focus();
+              }
+            }}
             placeholder="0.00"
+            ref={cardInputRef}
           />
         </div>
 
@@ -531,7 +625,7 @@ const BillingPage = () => {
             <div className="space-y-5">
               <div className="text-sm font-semibold text-gray-700">Change / Balance Amount</div>
               <div className="w-full border px-4 py-3 text-base rounded-lg bg-gray-50 text-gray-900">
-                Rs: {Math.abs(creditBalance).toFixed(2)}
+                {`Rs: ${Math.abs(Number(creditBalance) || 0).toFixed(2)}`}
               </div>
             </div>
 
@@ -549,8 +643,18 @@ const BillingPage = () => {
       <div className="flex-1"></div>
 
   <div className="space-y-2 mt-auto">
-          <button onClick={() => setShowTemporaryBills(true)} className="w-full px-3 py-2 bg-white hover:bg-sky-50 border border-sky-200 text-sky-700 rounded-lg transition">Temporary</button>
+          {/* Temporary button moved to the top action row */}
           <button
+            onClick={handleSaveTemporary}
+            disabled={selectedItems.length === 0 || isProcessing}
+            className={`w-full px-3 py-2 mb-2 rounded-lg flex items-center justify-center gap-2 transition ${selectedItems.length === 0 || isProcessing ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-sky-700 border border-sky-200 hover:bg-sky-50'}`}
+          >
+            <span>Save Temporary</span>
+          </button>
+
+          <button
+            ref={saveButtonRef}
+            tabIndex={0}
             onClick={handleAddDetails}
             disabled={selectedItems.length === 0 || isProcessing}
             className={`w-full px-3 py-2 rounded-lg flex items-center justify-center gap-2 transition ${selectedItems.length === 0 || isProcessing ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
@@ -570,7 +674,7 @@ const BillingPage = () => {
             )}
             <span>Print Invoice</span>
           </button>
-          <button onClick={() => resetTransaction()} className="w-full px-3 py-2 bg-white hover:bg-red-50 border border-red-300 rounded-lg text-red-600 transition">Clear</button>
+          <button onClick={() => handleClear()} className="w-full px-3 py-2 bg-white hover:bg-red-50 border border-red-300 rounded-lg text-red-600 transition">Clear</button>
         </div>
       </div>
 
@@ -586,7 +690,14 @@ const BillingPage = () => {
         onRefresh={loadTemporaryBills}
         onSelectBill={(b, idx) => {
           // fetch details and load; highlight already handled by modal
-          fetchTemporaryBillDetails(b.BillID);
+          fetchTemporaryBillDetails(b.BillID).then(() => {
+            // Close modal and focus item code input for next entry
+            setShowTemporaryBills(false);
+            setTimeout(() => {
+              itemCodeRef.current?.focus();
+              itemCodeRef.current?.select?.();
+            }, 0);
+          });
         }}
         onDeleteBill={async (id, idx) => {
           await handleDeleteTemporaryBill(id);

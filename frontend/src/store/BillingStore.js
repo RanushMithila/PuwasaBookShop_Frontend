@@ -44,7 +44,7 @@ const useBillingStore = create((set, get) => ({
     )
   })),
 
-  // Updates the discount percentage of a specific item
+  // Updates the discount amount (absolute rupees) of a specific item
   updateItemDiscount: (inventoryID, discount) => set((state) => ({
     // Discount now represents an absolute currency amount applied to the whole line, capped at line total
     selectedItems: state.selectedItems.map((item) => {
@@ -69,16 +69,22 @@ const useBillingStore = create((set, get) => ({
 
   // --- COMPUTED GETTERS ---
 
-  // Calculates the total price before any discounts or taxes
-  getSubtotal: () => get().selectedItems.reduce((total, item) => total + (item.itemUnitPrice || 0) * (item.QTY || 1), 0),
-  
-  // Calculates the total monetary value of all discounts applied
-  getTotalDiscount: () => get().selectedItems.reduce((total, item) => total + (item.Discount || 0), 0),
+  // Calculates the total price before any discounts or taxes (rounded to 2 decimals)
+  getSubtotal: () => {
+    const sum = get().selectedItems.reduce((total, item) => total + (item.itemUnitPrice || 0) * (item.QTY || 1), 0);
+    return parseFloat(sum.toFixed(2));
+  },
 
-  // Calculates the subtotal after discounts have been applied
-  getDiscountedSubtotal: () => get().getSubtotal() - get().getTotalDiscount(),
+  // Calculates the total monetary value of all discounts applied (rounded)
+  getTotalDiscount: () => {
+    const sum = get().selectedItems.reduce((total, item) => total + (item.Discount || 0), 0);
+    return parseFloat(sum.toFixed(2));
+  },
 
-  // Calculates the tax amount based on the discounted subtotal
+  // Calculates the subtotal after discounts have been applied (rounded)
+  getDiscountedSubtotal: () => {
+    return parseFloat((get().getSubtotal() - get().getTotalDiscount()).toFixed(2));
+  },
 
   // Calculates the final, grand total to be paid
   getTotal: () => get().getDiscountedSubtotal(),
