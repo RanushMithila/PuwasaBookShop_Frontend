@@ -2,7 +2,8 @@ import useTokenStore from '../store/TokenStore';
 
 class HttpClient {
   constructor() {
-    this.baseURL = '/api/v1';
+    // Use full API URL in production (Electron), proxy in development
+    this.baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
     this.isRefreshing = false;
     this.failedQueue = [];
   }

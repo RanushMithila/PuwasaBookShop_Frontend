@@ -63,7 +63,9 @@ const BillingPage = () => {
   const cashInputRef = useRef();
   const cardInputRef = useRef();
   const saveButtonRef = useRef();
+  const printButtonRef = useRef();
   const rowRefs = useRef(new Map());
+  const [inputsLocked, setInputsLocked] = useState(false);
 
   // Computed totals from store
   const subtotal = useBillingStore((s) => s.getSubtotal());
@@ -187,7 +189,11 @@ const BillingPage = () => {
   // Save: create (if needed) -> add details -> complete; shows returned change in the sidebar
   const handleAddDetails = async () => {
     try {
-      setIsProcessing(true);
+    setIsProcessing(true);
+    // Lock inputs immediately when Save is pressed to prevent further edits
+    setInputsLocked(true);
+      // Move focus to the Print Invoice button so the user can press Enter to print
+      setTimeout(() => printButtonRef.current?.focus(), 0);
       if (!selectedItems || selectedItems.length === 0) {
         alert('Add at least one item before saving the bill.');
         return;
@@ -231,6 +237,8 @@ const BillingPage = () => {
       }
     } catch (err) {
       console.error('Add details failed:', err);
+      // On failure, unlock inputs so the operator can correct and retry
+      setInputsLocked(false);
       alert('Error saving bill details: ' + err.message);
     } finally {
       setIsProcessing(false);
@@ -267,7 +275,7 @@ const BillingPage = () => {
       }
 
       // Keep the bill id so user can resume later
-      setCurrentBillId(billId);
+  setCurrentBillId(billId);
       // Optionally refresh temporary bills list if modal exists
       try { await loadTemporaryBills(); } catch (e) { /* ignore */ }
 
@@ -283,25 +291,70 @@ const BillingPage = () => {
   const handlePrintInvoice = async () => {
     try {
       setIsPrinting(true);
-      if (window?.electron?.ipcRenderer) {
-        // Trigger a simple Python example script (hello.py)
-        const result = await window.electron.ipcRenderer.invoke('run-hello', { when: new Date().toISOString() });
-        console.log('Hello script result:', result);
-        // On success, clear the current transaction so operator can start a new one
-        // Clear items, reset payment fields and balances
-        useBillingStore.getState().clearItems();
-        setCashPayAmount('0.00');
-        setCardAmount('0.00');
-        setCreditBalance(0);
-        setCurrentBillId(null);
-        // Focus item code for next transaction
-        setTimeout(() => {
-          itemCodeRef.current?.focus();
-          itemCodeRef.current?.select?.();
-        }, 0);
+      // Unlock inputs as soon as Print is pressed (they were locked after Save)
+      setInputsLocked(false);
+
+      if (!window?.electron?.ipcRenderer) return;
+
+      // Build the exact JSON structure the printing subsystem expects
+      const billId = currentBillId || `INV-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+      const dateStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+      const cashierId = window?.electron?.user?.id || (useBillingStore.getState().cashier || '1') || '1';
+
+      const payload = {
+        BillID: billId,
+        date: dateStr,
+        CashierID: cashierId,
+        Total: Number(total || 0),
+        Discount: Number(totalDiscount || 0),
+        Details: selectedItems.map((it) => ({
+          ItemName: it.itemName || it.ItemName || it.name || 'Item',
+          QTY: Number(it.QTY || 1),
+          UnitPrice: Number(it.itemUnitPrice || it.UnitPrice || it.price || 0),
+        })),
+      };
+
+      const result = await window.electron.ipcRenderer.invoke('print-receipt', payload);
+      console.log('Print result:', result);
+
+      if (!result || result.success !== true) {
+        console.warn('Printing failed or returned unsuccessful result:', result);
+        if (result) {
+          console.warn('error:', result.error);
+          console.warn('stdout:', result.stdout || result.message || '');
+          console.warn('stderr:', result.stderr || '');
+          console.warn('returned bill:', result.bill || 'no bill');
+        }
+        // Unlock inputs so the operator can correct and retry
+        setInputsLocked(false);
+        return;
       }
+
+      // On success, clear the entire transaction and UI fields so operator can start a new one
+      if (useBillingStore.getState().resetTransaction) {
+        useBillingStore.getState().resetTransaction();
+      } else {
+        useBillingStore.getState().clearItems();
+        setCurrentBillId(null);
+      }
+      setItemCode('');
+      setCustomerName('');
+      setCustomerPhone('');
+      setCashPayAmount('0.00');
+      setCardAmount('0.00');
+      setCreditBalance(0);
+      setCurrentBillId(null);
+      // Unlock inputs after successful print so user can continue
+      setInputsLocked(false);
+      // Focus item code for next transaction
+      setTimeout(() => {
+        itemCodeRef.current?.focus();
+        itemCodeRef.current?.select?.();
+      }, 0);
     } catch (err) {
-      console.warn('Hello script invoke failed:', err);
+      console.warn('Print invoke failed:', err);
+      // On unexpected error, unlock inputs so operator can continue
+      setInputsLocked(false);
     } finally {
       setIsPrinting(false);
     }
@@ -376,7 +429,12 @@ const BillingPage = () => {
           return (b.BillID || 0) - (a.BillID || 0);
         });
         setTemporaryBills(sorted);
+      } else if (resp && resp.status === false) {
+        // API returned an error message (for example: No pending bills found.)
+        setTemporaryBills([]);
+        setTempBillsError(resp.error_message || resp.message || 'No temporary bills found');
       } else {
+        setTemporaryBills([]);
         setTempBillsError('Unexpected response loading temporary bills');
       }
     } catch (e) {
@@ -427,6 +485,14 @@ const BillingPage = () => {
     // Focus item code for convenience
     setTimeout(() => itemCodeRef.current?.focus(), 0);
   };
+
+  // Listen for global clear events (fired by SummaryBox Clear button) to ensure
+  // both store and local UI fields are cleared across the app lifetime.
+  useEffect(() => {
+    const onGlobalClear = () => handleClear();
+    window.addEventListener('puwasa:clear', onGlobalClear);
+    return () => window.removeEventListener('puwasa:clear', onGlobalClear);
+  }, []);
 
   // Removed auto-filling payment inputs from total; user enters amounts explicitly.
 
@@ -482,6 +548,7 @@ const BillingPage = () => {
                   placeholder="Scan / Type barcode"
                   value={itemCode}
                   ref={itemCodeRef}
+                  readOnly={inputsLocked}
                   onChange={(e) => {
                     const val = e.target.value;
                     // If user types '+' we end item entry and focus cash
@@ -572,7 +639,7 @@ const BillingPage = () => {
             value={cashPayAmount}
             onChange={(e) => {
               setUserEditedCash(true);
-              setCashPayAmount(e.target.value);
+              if (!inputsLocked) setCashPayAmount(e.target.value);
             }}
             onFocus={(e) => e.target.select()}
             onBlur={(e) => {
@@ -591,6 +658,7 @@ const BillingPage = () => {
             }}
             placeholder="0.00"
             ref={cashInputRef}
+            readOnly={inputsLocked}
           />
         </div>
 
@@ -601,7 +669,7 @@ const BillingPage = () => {
             value={cardAmount}
             onChange={(e) => {
               setUserEditedCard(true);
-              setCardAmount(e.target.value);
+              if (!inputsLocked) setCardAmount(e.target.value);
             }}
             onFocus={(e) => e.target.select()}
             onBlur={(e) => {
@@ -618,6 +686,7 @@ const BillingPage = () => {
             }}
             placeholder="0.00"
             ref={cardInputRef}
+            readOnly={inputsLocked}
           />
         </div>
 
@@ -665,6 +734,7 @@ const BillingPage = () => {
             <span>Save</span>
           </button>
           <button
+            ref={printButtonRef}
             onClick={() => handlePrintInvoice()}
             disabled={isPrinting}
             className={`w-full px-3 py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg flex items-center justify-center gap-2 transition ${isPrinting ? 'opacity-60 cursor-not-allowed' : ''}`}

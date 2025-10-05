@@ -47,8 +47,8 @@ const SummaryBox = () => {
       const billResponse = await createBill(billData); // Ensure createBill is defined and imported
       if (!billResponse.status) throw new Error(billResponse.error_message || 'Failed to create bill.');
 
-      const billId = billResponse.data;
-      setCurrentBillId(billId);
+  const billId = billResponse.data;
+  setCurrentBillId(billId);
 
       const itemsPayload = selectedItems.map(item => ({
         InventoryID: item.inventoryID,
@@ -63,12 +63,21 @@ const SummaryBox = () => {
 
       alert(`${completeResponse.message}\nBalance: ${completeResponse.data}`);
 
+      // Prefer the bill id stored in the billing store (ensures consistency)
+      const storeBillId = useBillingStore.getState().currentBillId || billId;
+
       const receiptData = {
-        billId,
-        items: [...selectedItems],
-        subtotal,
-        discount: totalDiscount,
-        total,
+        BillID: storeBillId,
+        date: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        CashierID: user?.id || 1,
+        Total: total,
+        Discount: totalDiscount,
+        // Provide a normalized Details array expected by the printer
+        Details: selectedItems.map(item => ({
+          ItemName: item.itemName || item.ItemName || 'Item',
+          QTY: Number(item.QTY || 1),
+          UnitPrice: Number(item.itemUnitPrice || item.UnitPrice || 0),
+        })),
       };
 
       const printResponse = await window.electron.ipcRenderer.invoke('print-receipt', receiptData);
@@ -117,6 +126,17 @@ const SummaryBox = () => {
           className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
         >
           {isProcessing ? 'Processing...' : 'Pay Now'}
+        </button>
+        <button
+          onClick={() => {
+            // Clear store-level transaction
+            try { resetTransaction(); } catch (e) { /* ignore */ }
+            // Dispatch a global event so pages with local UI can clear too
+            try { window.dispatchEvent(new CustomEvent('puwasa:clear')); } catch (e) { /* ignore */ }
+          }}
+          className="w-full bg-white text-red-600 py-3 px-4 rounded-lg font-semibold border border-red-200 hover:bg-red-50 transition-colors"
+        >
+          Clear
         </button>
       </div>
     </div>
