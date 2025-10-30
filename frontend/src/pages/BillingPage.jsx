@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
-import debounce from 'lodash.debounce';
-import BillingItemRow from '../components/BillingItemRow';
-import SummaryBox from '../components/SummaryBox';
-import useBillingStore from '../store/BillingStore';
-import Receipt from '../components/Receipt';
-import CashInOutModal from '../components/CashInOutModal';
-import CashCountModal from '../components/CashCountModal';
-import TemporaryBillsModal from '../components/TemporaryBillsModal';
-import useTokenStore from '../store/TokenStore';
+import { useEffect, useRef, useState } from "react";
+import debounce from "lodash.debounce";
+import BillingItemRow from "../components/BillingItemRow";
+import SummaryBox from "../components/SummaryBox";
+import useBillingStore from "../store/BillingStore";
+import Receipt from "../components/Receipt";
+import CashInOutModal from "../components/CashInOutModal";
+import CashCountModal from "../components/CashCountModal";
+import TemporaryBillsModal from "../components/TemporaryBillsModal";
+import SearchByNameModal from "../components/SearchByNameModal"; // Import the new modal
+import useTokenStore from "../store/TokenStore";
 import {
   createBill,
   addBillDetails,
@@ -17,8 +18,8 @@ import {
   getBill,
   cancelBill,
   getTemporaryBills,
-} from '../services/BillingService';
-import { getInventory } from '../services/InventoryService';
+} from "../services/BillingService";
+import { getInventory } from "../services/InventoryService";
 
 const BillingPage = () => {
   // Billing store
@@ -36,22 +37,24 @@ const BillingPage = () => {
   const [showCashInOut, setShowCashInOut] = useState(false);
   const [showCashCount, setShowCashCount] = useState(false);
   const [showTemporaryBills, setShowTemporaryBills] = useState(false);
+  const [showSearchByNameModal, setShowSearchByNameModal] = useState(false); // State for the new modal
   const [temporaryBills, setTemporaryBills] = useState([]);
   const [loadingTempBills, setLoadingTempBills] = useState(false);
-  const [tempBillsError, setTempBillsError] = useState('');
+  const [tempBillsError, setTempBillsError] = useState("");
 
   // Customer
-  const [customerName, setCustomerName] = useState('Saman');
-  const [customerPhone, setCustomerPhone] = useState('+1234567890');
+  const [customerName, setCustomerName] = useState("Customer");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const locationName = "Polonnaruwa";
 
   // Search / item code and suggestions
-  const [itemCode, setItemCode] = useState('');
+  const [itemCode, setItemCode] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [highlightIndex, setHighlightIndex] = useState(-1);
 
   // Payment
-  const [cashPayAmount, setCashPayAmount] = useState('0.00');
-  const [cardAmount, setCardAmount] = useState('0.00');
+  const [cashPayAmount, setCashPayAmount] = useState("0.00");
+  const [cardAmount, setCardAmount] = useState("0.00");
   const [creditBalance, setCreditBalance] = useState(0);
   const [userEditedCash, setUserEditedCash] = useState(false);
   const [userEditedCard, setUserEditedCard] = useState(false);
@@ -75,26 +78,33 @@ const BillingPage = () => {
 
   // --- JWT decode helpers ---
   const decodeJWT = (token) => {
-    if (!token || typeof token !== 'string' || token.split('.').length < 2) return null;
+    if (!token || typeof token !== "string" || token.split(".").length < 2)
+      return null;
     try {
-      const base64Url = token.split('.')[1];
+      const base64Url = token.split(".")[1];
       // Base64URL -> Base64
-      let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
       // Pad if needed
       const pad = base64.length % 4;
-      if (pad) base64 += '='.repeat(4 - pad);
+      if (pad) base64 += "=".repeat(4 - pad);
       const json = atob(base64);
       return JSON.parse(json);
     } catch (err) {
-      console.warn('Failed to decode JWT:', err);
+      console.warn("Failed to decode JWT:", err);
       return null;
     }
   };
 
   const extractRole = (token) => {
     const payload = decodeJWT(token);
-    if (!payload) return 'USER';
-    return payload.role || payload.Role || payload.roles || payload.authorities || 'USER';
+    if (!payload) return "USER";
+    return (
+      payload.role ||
+      payload.Role ||
+      payload.roles ||
+      payload.authorities ||
+      "USER"
+    );
   };
 
   const loginRole = extractRole(accessToken);
@@ -111,11 +121,11 @@ const BillingPage = () => {
   useEffect(() => {
     const handler = (e) => {
       if (!suggestions || suggestions.length === 0) return;
-      if (e.key === 'ArrowDown') {
+      if (e.key === "ArrowDown") {
         setHighlightIndex((i) => Math.min(suggestions.length - 1, i + 1));
-      } else if (e.key === 'ArrowUp') {
+      } else if (e.key === "ArrowUp") {
         setHighlightIndex((i) => Math.max(-1, i - 1));
-      } else if (e.key === 'Enter') {
+      } else if (e.key === "Enter") {
         if (highlightIndex >= 0 && suggestions[highlightIndex]) {
           selectSuggestedItem(suggestions[highlightIndex]);
         } else if (itemCode.trim()) {
@@ -124,8 +134,8 @@ const BillingPage = () => {
         }
       }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
     // only depends on suggestions/highlightIndex
   }, [suggestions, highlightIndex, itemCode]);
 
@@ -153,7 +163,7 @@ const BillingPage = () => {
         setSuggestions([]);
       }
     } catch (err) {
-      console.error('Barcode search failed:', err);
+      console.error("Barcode search failed:", err);
       setSuggestions([]);
     }
   };
@@ -173,12 +183,15 @@ const BillingPage = () => {
       Discount: 0,
       amount: item.itemUnitPrice,
     });
-    setItemCode('');
+    setItemCode("");
     setSuggestions([]);
     setHighlightIndex(-1);
     // After adding item, focus quantity of the newly added row
     setTimeout(() => {
-      const last = useBillingStore.getState().selectedItems?.[useBillingStore.getState().selectedItems.length - 1];
+      const last =
+        useBillingStore.getState().selectedItems?.[
+          useBillingStore.getState().selectedItems.length - 1
+        ];
       if (last && rowRefs.current.has(last.inventoryID)) {
         rowRefs.current.get(last.inventoryID).qtyRef.current?.focus();
         rowRefs.current.get(last.inventoryID).qtyRef.current?.select?.();
@@ -189,21 +202,25 @@ const BillingPage = () => {
   // Save: create (if needed) -> add details -> complete; shows returned change in the sidebar
   const handleAddDetails = async () => {
     try {
-    setIsProcessing(true);
-    // Lock inputs immediately when Save is pressed to prevent further edits
-    setInputsLocked(true);
+      setIsProcessing(true);
+      // Lock inputs immediately when Save is pressed to prevent further edits
+      setInputsLocked(true);
       // Move focus to the Print Invoice button so the user can press Enter to print
       setTimeout(() => printButtonRef.current?.focus(), 0);
       if (!selectedItems || selectedItems.length === 0) {
-        alert('Add at least one item before saving the bill.');
+        alert("Add at least one item before saving the bill.");
         return;
       }
       // Ensure bill exists (create if missing)
       let billIdToUse = currentBillId;
       if (!billIdToUse) {
-        const createResp = await createBill({ LocationID: 1, CustomerID: 1, CashierID: 1 });
+        const createResp = await createBill({
+          LocationID: 1,
+          CustomerID: 1,
+          CashierID: 1,
+        });
         if (!(createResp && createResp.status === true && createResp.data)) {
-          alert('Failed to create bill');
+          alert("Failed to create bill");
           return;
         }
         billIdToUse = createResp.data;
@@ -220,26 +237,67 @@ const BillingPage = () => {
         };
       });
 
-      const resp = await addBillDetails({ BillID: billIdToUse, Items: itemsPayload });
-      console.log('Add details response:', resp);
+      const resp = await addBillDetails({
+        BillID: billIdToUse,
+        Items: itemsPayload,
+      });
+      console.log("Add details response:", resp);
       if (!(resp && resp.status === true)) {
-        alert('Failed to save details: ' + (resp?.error_message || resp?.message || JSON.stringify(resp)));
+        alert(
+          "Failed to save details: " +
+            (resp?.error_message || resp?.message || JSON.stringify(resp))
+        );
         return;
       }
 
       // Complete billing and show returned change
-      const payment = { CashAmount: parseFloat(cashPayAmount) || 0, CardAmount: parseFloat(cardAmount) || 0 };
+      const payment = {
+        CashAmount: parseFloat(cashPayAmount) || 0,
+        CardAmount: parseFloat(cardAmount) || 0,
+      };
       const completeResp = await completeBill(billIdToUse, payment);
       if (completeResp && completeResp.status === true) {
         setCreditBalance(completeResp.data || 0);
       } else {
-        alert('Failed to complete billing: ' + (completeResp?.error_message || completeResp?.message || JSON.stringify(completeResp)));
+        alert(
+          "Failed to complete billing: " +
+            (completeResp?.error_message ||
+              completeResp?.message ||
+              JSON.stringify(completeResp))
+        );
+      }
+      // After a successful Save (complete billing), clear all UI and store state
+      // except keep the change/balance amount so the operator can see it.
+      if (completeResp && completeResp.status === true) {
+        // Clear store transaction (items, customer, currentBillId)
+        try {
+          resetTransaction();
+        } catch (e) {
+          // ignore
+        }
+
+        // Clear local UI fields
+        setItemCode("");
+        setSuggestions([]);
+        setHighlightIndex(-1);
+        setCashPayAmount("0.00");
+        setCardAmount("0.00");
+        setCurrentBillId(null);
+
+        // Keep creditBalance as returned by the server so operator sees the change
+        setCreditBalance(completeResp.data || 0);
+
+        // Unlock inputs so operator can start a fresh transaction
+        setInputsLocked(false);
+
+        // Focus item code for convenience
+        setTimeout(() => itemCodeRef.current?.focus(), 0);
       }
     } catch (err) {
-      console.error('Add details failed:', err);
+      console.error("Add details failed:", err);
       // On failure, unlock inputs so the operator can correct and retry
       setInputsLocked(false);
-      alert('Error saving bill details: ' + err.message);
+      alert("Error saving bill details: " + err.message);
     } finally {
       setIsProcessing(false);
     }
@@ -250,14 +308,18 @@ const BillingPage = () => {
     try {
       setIsProcessing(true);
       if (!selectedItems || selectedItems.length === 0) {
-        alert('Add at least one item before saving the temporary bill.');
+        alert("Add at least one item before saving the temporary bill.");
         return;
       }
 
       // Create a bill first
-      const createResp = await createBill({ LocationID: 1, CustomerID: 1, CashierID: 1 });
+      const createResp = await createBill({
+        LocationID: 1,
+        CustomerID: 1,
+        CashierID: 1,
+      });
       if (!(createResp && createResp.status === true && createResp.data)) {
-        alert('Failed to create temporary bill');
+        alert("Failed to create temporary bill");
         return;
       }
       const billId = createResp.data;
@@ -268,21 +330,33 @@ const BillingPage = () => {
         QTY: it.QTY || 1,
       }));
 
-      const detailsResp = await addBillDetails({ BillID: billId, Items: itemsPayload });
+      const detailsResp = await addBillDetails({
+        BillID: billId,
+        Items: itemsPayload,
+      });
       if (!(detailsResp && detailsResp.status === true)) {
-        alert('Failed to save temporary bill details: ' + (detailsResp?.error_message || detailsResp?.message || JSON.stringify(detailsResp)));
+        alert(
+          "Failed to save temporary bill details: " +
+            (detailsResp?.error_message ||
+              detailsResp?.message ||
+              JSON.stringify(detailsResp))
+        );
         return;
       }
 
       // Keep the bill id so user can resume later
-  setCurrentBillId(billId);
+      setCurrentBillId(billId);
       // Optionally refresh temporary bills list if modal exists
-      try { await loadTemporaryBills(); } catch (e) { /* ignore */ }
+      try {
+        await loadTemporaryBills();
+      } catch (e) {
+        /* ignore */
+      }
 
-      alert('Temporary bill saved (ID: ' + billId + ')');
+      alert("Temporary bill saved (ID: " + billId + ")");
     } catch (err) {
-      console.error('Save temporary failed:', err);
-      alert('Error saving temporary bill: ' + (err?.message || err));
+      console.error("Save temporary failed:", err);
+      alert("Error saving temporary bill: " + (err?.message || err));
     } finally {
       setIsProcessing(false);
     }
@@ -290,40 +364,74 @@ const BillingPage = () => {
 
   const handlePrintInvoice = async () => {
     try {
+      // Mark printing in progress (used to disable the button and show overlay)
       setIsPrinting(true);
       // Unlock inputs as soon as Print is pressed (they were locked after Save)
       setInputsLocked(false);
 
-      if (!window?.electron?.ipcRenderer) return;
+      console.log("handlePrintInvoice: clicked", {
+        selectedItemsLength: selectedItems.length,
+        isPrinting,
+      });
+
+      // If ipcRenderer is not available, reset printing flag and notify the user
+      if (!window?.electron?.ipcRenderer) {
+        console.warn(
+          "handlePrintInvoice: ipcRenderer not available in renderer"
+        );
+        setIsPrinting(false);
+        alert("Printing is not available in this environment.");
+        return;
+      }
 
       // Build the exact JSON structure the printing subsystem expects
-      const billId = currentBillId || `INV-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-      const dateStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
-      const cashierId = window?.electron?.user?.id || (useBillingStore.getState().cashier || '1') || '1';
+      const billId =
+        currentBillId ||
+        `INV-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+      const dateStr = new Date().toISOString().replace("T", " ").slice(0, 19);
+      const cashierId =
+        window?.electron?.user?.id || useBillingStore.getState().cashier || "1";
+
+      // Derive customer name fields from the Customer input box
+      const fullCustomerName = (customerName || "").trim();
+      const nameParts = fullCustomerName.split(/\s+/).filter(Boolean);
+      const customerFName = nameParts[0] || "";
+      const customerLName = nameParts.slice(1).join(" ") || "";
 
       const payload = {
         BillID: billId,
         date: dateStr,
         CashierID: cashierId,
+        // Send customer name instead of an ID for printing as requested
+        CustomerName: fullCustomerName,
+        CustomerFName: customerFName,
+        CustomerLName: customerLName,
         Total: Number(total || 0),
         Discount: Number(totalDiscount || 0),
         Details: selectedItems.map((it) => ({
-          ItemName: it.itemName || it.ItemName || it.name || 'Item',
+          ItemName: it.itemName || it.ItemName || it.name || "Item",
           QTY: Number(it.QTY || 1),
           UnitPrice: Number(it.itemUnitPrice || it.UnitPrice || it.price || 0),
         })),
       };
 
-      const result = await window.electron.ipcRenderer.invoke('print-receipt', payload);
-      console.log('Print result:', result);
+      console.log("handlePrintInvoice: payload prepared", payload);
+      const result = await window.electron.ipcRenderer.invoke(
+        "print-receipt",
+        payload
+      );
+      console.log("Print result:", result);
 
       if (!result || result.success !== true) {
-        console.warn('Printing failed or returned unsuccessful result:', result);
+        console.warn(
+          "Printing failed or returned unsuccessful result:",
+          result
+        );
         if (result) {
-          console.warn('error:', result.error);
-          console.warn('stdout:', result.stdout || result.message || '');
-          console.warn('stderr:', result.stderr || '');
-          console.warn('returned bill:', result.bill || 'no bill');
+          console.warn("error:", result.error);
+          console.warn("stdout:", result.stdout || result.message || "");
+          console.warn("stderr:", result.stderr || "");
+          console.warn("returned bill:", result.bill || "no bill");
         }
         // Unlock inputs so the operator can correct and retry
         setInputsLocked(false);
@@ -337,11 +445,10 @@ const BillingPage = () => {
         useBillingStore.getState().clearItems();
         setCurrentBillId(null);
       }
-      setItemCode('');
-      setCustomerName('');
-      setCustomerPhone('');
-      setCashPayAmount('0.00');
-      setCardAmount('0.00');
+      setItemCode("");
+      setCustomerPhone("");
+      setCashPayAmount("0.00");
+      setCardAmount("0.00");
       setCreditBalance(0);
       setCurrentBillId(null);
       // Unlock inputs after successful print so user can continue
@@ -352,7 +459,7 @@ const BillingPage = () => {
         itemCodeRef.current?.select?.();
       }, 0);
     } catch (err) {
-      console.warn('Print invoke failed:', err);
+      console.warn("Print invoke failed:", err);
       // On unexpected error, unlock inputs so operator can continue
       setInputsLocked(false);
     } finally {
@@ -373,7 +480,9 @@ const BillingPage = () => {
         setTemporaryBills((prev) => {
           const exists = prev.some((b) => b.BillID === resp.data.BillID);
           if (!exists) return [resp.data, ...prev];
-          return prev.map((b) => (b.BillID === resp.data.BillID ? { ...b, ...resp.data } : b));
+          return prev.map((b) =>
+            b.BillID === resp.data.BillID ? { ...b, ...resp.data } : b
+          );
         });
 
         // Clear only items then repopulate from bill Details directly (no extra inventory fetch)
@@ -395,8 +504,9 @@ const BillingPage = () => {
               itemName: d.ItemName || `Item ${d.InventoryID}`,
               itemUnitPrice: unitPrice,
               itemCostPrice: d.CostPrice || 0,
-              barcode: d.Barcode || d.barcode || '',
-              itemDescription: d.Description || d.ItemDescription || d.itemDescription || '',
+              barcode: d.Barcode || d.barcode || "",
+              itemDescription:
+                d.Description || d.ItemDescription || d.itemDescription || "",
               itemCategory: d.Category || null,
               locationID: resp.data.LocationID,
               QTY: qty,
@@ -406,19 +516,28 @@ const BillingPage = () => {
         }
       }
     } catch (err) {
-      console.error('Fetch bill failed:', err);
+      console.error("Fetch bill failed:", err);
     }
   };
 
   const loadTemporaryBills = async () => {
     setLoadingTempBills(true);
-    setTempBillsError('');
+    setTempBillsError("");
     try {
       const resp = await getTemporaryBills(1); // LocationID hardcoded as 1 per current flows
       if (resp && resp.status === true && Array.isArray(resp.data)) {
         // Replace local list with server truth; sort newest first by createdDateTime then BillID desc
         const getTs = (x) => {
-          const d = x.createdDateTime || x.CreatedDateTime || x.createdAt || x.CreatedAt || x.created_date || x.CreatedDate || x.dateCreated || x.DateCreated || null;
+          const d =
+            x.createdDateTime ||
+            x.CreatedDateTime ||
+            x.createdAt ||
+            x.CreatedAt ||
+            x.created_date ||
+            x.CreatedDate ||
+            x.dateCreated ||
+            x.DateCreated ||
+            null;
           const t = d ? new Date(d).getTime() : 0;
           return Number.isFinite(t) ? t : 0;
         };
@@ -432,14 +551,16 @@ const BillingPage = () => {
       } else if (resp && resp.status === false) {
         // API returned an error message (for example: No pending bills found.)
         setTemporaryBills([]);
-        setTempBillsError(resp.error_message || resp.message || 'No temporary bills found');
+        setTempBillsError(
+          resp.error_message || resp.message || "No temporary bills found"
+        );
       } else {
         setTemporaryBills([]);
-        setTempBillsError('Unexpected response loading temporary bills');
+        setTempBillsError("Unexpected response loading temporary bills");
       }
     } catch (e) {
-      console.error('Failed to load temporary bills', e);
-      setTempBillsError(e.message || 'Failed to load');
+      console.error("Failed to load temporary bills", e);
+      setTempBillsError(e.message || "Failed to load");
     } finally {
       setLoadingTempBills(false);
     }
@@ -455,7 +576,7 @@ const BillingPage = () => {
   const handleDeleteTemporaryBill = async (billId) => {
     try {
       const resp = await cancelBill(billId);
-      console.log('Cancel bill response:', resp);
+      console.log("Cancel bill response:", resp);
       if (resp && resp.status === true) {
         // If the deleted bill is currently loaded, clear transaction
         if (currentBillId === billId) {
@@ -465,12 +586,14 @@ const BillingPage = () => {
         // Refresh list from backend (no optimistic removal needed)
         await loadTemporaryBills();
       } else {
-        console.warn('Failed to delete temporary bill', resp);
-        setTempBillsError(resp?.error_message || resp?.message || 'Delete failed');
+        console.warn("Failed to delete temporary bill", resp);
+        setTempBillsError(
+          resp?.error_message || resp?.message || "Delete failed"
+        );
       }
     } catch (err) {
-      console.error('Delete temporary bill failed:', err);
-      setTempBillsError(err.message || 'Delete error');
+      console.error("Delete temporary bill failed:", err);
+      setTempBillsError(err.message || "Delete error");
     }
   };
 
@@ -479,8 +602,8 @@ const BillingPage = () => {
     // Reset store transaction (items, customer, currentBillId)
     resetTransaction();
     // Reset local payment inputs and balances
-    setCashPayAmount('0.00');
-    setCardAmount('0.00');
+    setCashPayAmount("0.00");
+    setCardAmount("0.00");
     setCreditBalance(0);
     // Focus item code for convenience
     setTimeout(() => itemCodeRef.current?.focus(), 0);
@@ -490,8 +613,8 @@ const BillingPage = () => {
   // both store and local UI fields are cleared across the app lifetime.
   useEffect(() => {
     const onGlobalClear = () => handleClear();
-    window.addEventListener('puwasa:clear', onGlobalClear);
-    return () => window.removeEventListener('puwasa:clear', onGlobalClear);
+    window.addEventListener("puwasa:clear", onGlobalClear);
+    return () => window.removeEventListener("puwasa:clear", onGlobalClear);
   }, []);
 
   // Removed auto-filling payment inputs from total; user enters amounts explicitly.
@@ -520,6 +643,12 @@ const BillingPage = () => {
           >
             Temporary
           </button>
+          <button
+            onClick={() => setShowSearchByNameModal(true)}
+            className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition"
+          >
+            Search by name
+          </button>
           <div className="flex-1"></div>
         </div>
 
@@ -527,9 +656,19 @@ const BillingPage = () => {
         <div className="flex items-center gap-3 mt-3">
           <div className="flex items-center space-x-2">
             <label className="text-sm">Customer</label>
-            <input className="border px-2 py-1 w-40" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-            <input className="border px-2 py-1 w-44" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+            <input
+              className="border px-2 py-1 w-40"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+            />
+            <label className="text-sm">Phone</label>
+            <input
+              className="border px-2 py-1 w-44"
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+            />
           </div>
+
           <div className="flex-1"></div>
         </div>
 
@@ -539,7 +678,10 @@ const BillingPage = () => {
             {/* Header row */}
             <div
               className="grid text-sm font-semibold border-b py-2 sticky top-0 bg-white z-10"
-              style={{ gridTemplateColumns: '120px 1fr 120px 70px 120px 100px', columnGap: '12px' }}
+              style={{
+                gridTemplateColumns: "240px 1fr 120px 70px 120px 100px",
+                columnGap: "12px",
+              }}
             >
               <div className="flex flex-col">
                 <div className="text-gray-600">Item Code</div>
@@ -552,8 +694,8 @@ const BillingPage = () => {
                   onChange={(e) => {
                     const val = e.target.value;
                     // If user types '+' we end item entry and focus cash
-                    if (val.trim() === '+') {
-                      setItemCode('');
+                    if (val.trim() === "+") {
+                      setItemCode("");
                       setSuggestions([]);
                       setHighlightIndex(-1);
                       setTimeout(() => cashInputRef.current?.focus(), 0);
@@ -562,7 +704,11 @@ const BillingPage = () => {
                     setItemCode(val);
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && itemCode.trim() && suggestions.length === 0) {
+                    if (
+                      e.key === "Enter" &&
+                      itemCode.trim() &&
+                      suggestions.length === 0
+                    ) {
                       // Enter on item code triggers barcode lookup fallback
                       searchBarcode(itemCode.trim());
                     }
@@ -583,10 +729,14 @@ const BillingPage = () => {
                   <div
                     key={s.inventoryID}
                     onClick={() => selectSuggestedItem(s)}
-                    className={`p-2 cursor-pointer ${idx === highlightIndex ? 'bg-blue-100' : ''}`}
+                    className={`p-2 cursor-pointer ${
+                      idx === highlightIndex ? "bg-blue-100" : ""
+                    }`}
                   >
                     <div className="font-semibold">{s.itemName}</div>
-                    <div className="text-xs text-gray-600">Barcode: {s.barcode} | Rs: {s.itemUnitPrice}</div>
+                    <div className="text-xs text-gray-600">
+                      Barcode: {s.barcode} | Rs: {s.itemUnitPrice}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -594,7 +744,9 @@ const BillingPage = () => {
           </div>
 
           {selectedItems.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">No items selected</div>
+            <div className="text-center py-8 text-gray-500">
+              No items selected
+            </div>
           ) : (
             selectedItems.map((item, i) => (
               <BillingItemRow
@@ -618,22 +770,39 @@ const BillingPage = () => {
             {/* Placeholder left area in original design */}
           </div>
           <div className="text-center">
-            <div className="text-xs uppercase tracking-wide text-gray-500">Item Count</div>
-            <div className="text-5xl font-extrabold text-emerald-600 drop-shadow-sm">{itemCount}</div>
+            <div className="text-xs uppercase tracking-wide text-gray-500">
+              Item Count
+            </div>
+            <div className="text-5xl font-extrabold text-emerald-600 drop-shadow-sm">
+              {itemCount}
+            </div>
           </div>
           <div className="w-1/3 text-right">
-            <div className="text-xs uppercase tracking-wide text-gray-500">Total Amount</div>
-            <div className="text-3xl font-extrabold text-gray-900">Rs: {subtotal.toFixed(2)}</div>
-            <div className="text-sm text-gray-500">Discount: <span className="font-medium text-gray-700">Rs: {totalDiscount.toFixed(2)}</span></div>
-            <div className="mt-1 text-2xl font-extrabold text-emerald-700">Net: Rs: {Math.max(0, (subtotal - totalDiscount)).toFixed(2)}</div>
+            <div className="text-xs uppercase tracking-wide text-gray-500">
+              Total Amount
+            </div>
+            <div className="text-3xl font-extrabold text-gray-900">
+              Rs: {subtotal.toFixed(2)}
+            </div>
+            <div className="text-sm text-gray-500">
+              Discount:{" "}
+              <span className="font-medium text-gray-700">
+                Rs: {totalDiscount.toFixed(2)}
+              </span>
+            </div>
+            <div className="mt-1 text-2xl font-extrabold text-emerald-700">
+              Net: Rs: {Math.max(0, subtotal - totalDiscount).toFixed(2)}
+            </div>
           </div>
         </div>
       </div>
 
-  {/* Right: Payment and actions */}
-  <div className="w-[340px] bg-white p-4 border-l flex flex-col">
+      {/* Right: Payment and actions */}
+      <div className="w-[340px] bg-white p-4 border-l flex flex-col">
         <div className="space-y-3">
-          <div className="text-sm font-semibold text-gray-700">Cash Pay Amount</div>
+          <div className="text-sm font-semibold text-gray-700">
+            Cash Pay Amount
+          </div>
           <input
             className="w-full border px-4 py-3 text-base rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
             value={cashPayAmount}
@@ -649,7 +818,7 @@ const BillingPage = () => {
               }
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+              if (e.key === "Enter") {
                 // Move focus to card amount input
                 e.preventDefault();
                 cardInputRef.current?.focus();
@@ -663,7 +832,9 @@ const BillingPage = () => {
         </div>
 
         <div className="space-y-3">
-          <div className="text-sm font-semibold text-gray-700">Credit Card Amount</div>
+          <div className="text-sm font-semibold text-gray-700">
+            Credit Card Amount
+          </div>
           <input
             className="w-full border px-4 py-3 text-base rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
             value={cardAmount}
@@ -678,7 +849,7 @@ const BillingPage = () => {
               }
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+              if (e.key === "Enter") {
                 // Move focus to Save button (do not click)
                 e.preventDefault();
                 saveButtonRef.current?.focus();
@@ -691,32 +862,44 @@ const BillingPage = () => {
         </div>
 
         <div className="space-y-8 md:space-y-10">
-            <div className="space-y-5">
-              <div className="text-sm font-semibold text-gray-700">Change / Balance Amount</div>
-              <div className="w-full border px-4 py-3 text-base rounded-lg bg-gray-50 text-gray-900">
-                {`Rs: ${Math.abs(Number(creditBalance) || 0).toFixed(2)}`}
-              </div>
+          <div className="space-y-5">
+            <div className="text-sm font-semibold text-gray-700">
+              Change / Balance Amount
             </div>
-
-            <div className="space-y-1">
-              <div className="text-sm font-semibold text-gray-700">Last Bill Balance</div>
-              <div className="text-2xl font-bold text-gray-800">00.00</div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-xs uppercase tracking-wide text-gray-500">Role</div>
-              <div className="text-xl uppercase tracking-wide font-bold text-emerald-700">{loginRole}</div>
+            <div className="w-full border px-4 py-3 text-base rounded-lg bg-gray-50 text-gray-900">
+              {`Rs: ${Math.abs(Number(creditBalance) || 0).toFixed(2)}`}
             </div>
           </div>
 
-      <div className="flex-1"></div>
+          <div className="space-y-1">
+            <div className="text-sm font-semibold text-gray-700">
+              Last Bill Balance
+            </div>
+            <div className="text-2xl font-bold text-gray-800">00.00</div>
+          </div>
 
-  <div className="space-y-2 mt-auto">
+          <div className="space-y-1">
+            <div className="text-xs uppercase tracking-wide text-gray-500">
+              Role
+            </div>
+            <div className="text-xl uppercase tracking-wide font-bold text-emerald-700">
+              {loginRole}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1"></div>
+
+        <div className="space-y-2 mt-auto">
           {/* Temporary button moved to the top action row */}
           <button
             onClick={handleSaveTemporary}
             disabled={selectedItems.length === 0 || isProcessing}
-            className={`w-full px-3 py-2 mb-2 rounded-lg flex items-center justify-center gap-2 transition ${selectedItems.length === 0 || isProcessing ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-sky-700 border border-sky-200 hover:bg-sky-50'}`}
+            className={`w-full px-3 py-2 mb-2 rounded-lg flex items-center justify-center gap-2 transition ${
+              selectedItems.length === 0 || isProcessing
+                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                : "bg-white text-sky-700 border border-sky-200 hover:bg-sky-50"
+            }`}
           >
             <span>Save Temporary</span>
           </button>
@@ -726,7 +909,11 @@ const BillingPage = () => {
             tabIndex={0}
             onClick={handleAddDetails}
             disabled={selectedItems.length === 0 || isProcessing}
-            className={`w-full px-3 py-2 rounded-lg flex items-center justify-center gap-2 transition ${selectedItems.length === 0 || isProcessing ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
+            className={`w-full px-3 py-2 rounded-lg flex items-center justify-center gap-2 transition ${
+              selectedItems.length === 0 || isProcessing
+                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                : "bg-emerald-600 text-white hover:bg-emerald-700"
+            }`}
           >
             {isProcessing && (
               <span className="inline-block h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
@@ -737,20 +924,34 @@ const BillingPage = () => {
             ref={printButtonRef}
             onClick={() => handlePrintInvoice()}
             disabled={isPrinting}
-            className={`w-full px-3 py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg flex items-center justify-center gap-2 transition ${isPrinting ? 'opacity-60 cursor-not-allowed' : ''}`}
+            className={`w-full px-3 py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg flex items-center justify-center gap-2 transition ${
+              isPrinting ? "opacity-60 cursor-not-allowed" : ""
+            }`}
           >
             {isPrinting && (
               <span className="inline-block h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
             )}
             <span>Print Invoice</span>
           </button>
-          <button onClick={() => handleClear()} className="w-full px-3 py-2 bg-white hover:bg-red-50 border border-red-300 rounded-lg text-red-600 transition">Clear</button>
+          <button
+            onClick={() => handleClear()}
+            className="w-full px-3 py-2 bg-white hover:bg-red-50 border border-red-300 rounded-lg text-red-600 transition"
+          >
+            Clear
+          </button>
         </div>
       </div>
 
       {/* Modals */}
-      <CashInOutModal isOpen={showCashInOut} onClose={() => setShowCashInOut(false)} type="in" />
-      <CashCountModal isOpen={showCashCount} onClose={() => setShowCashCount(false)} />
+      <CashInOutModal
+        isOpen={showCashInOut}
+        onClose={() => setShowCashInOut(false)}
+        type="in"
+      />
+      <CashCountModal
+        isOpen={showCashCount}
+        onClose={() => setShowCashCount(false)}
+      />
       <TemporaryBillsModal
         isOpen={showTemporaryBills}
         onClose={() => setShowTemporaryBills(false)}
@@ -773,18 +974,28 @@ const BillingPage = () => {
           await handleDeleteTemporaryBill(id);
         }}
       />
+      <SearchByNameModal
+        isOpen={showSearchByNameModal}
+        onClose={() => setShowSearchByNameModal(false)}
+        onSelectItem={selectSuggestedItem}
+      />
 
       {/* Hidden printable receipt */}
-      <div style={{ display: 'none' }}>
+      <div style={{ display: "none" }}>
         <div ref={receiptRef}>
           <Receipt items={selectedItems} />
         </div>
       </div>
       {(isProcessing || isPrinting) && (
-        <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-50">
-          <div className="bg-white px-4 py-3 rounded shadow flex items-center gap-3">
+        // Make overlay visually blocking but allow pointer events to pass through
+        // so that important inputs like Customer name/phone remain clickable.
+        // The spinner panel itself should still receive pointer events.
+        <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-50 pointer-events-none">
+          <div className="bg-white px-4 py-3 rounded shadow flex items-center gap-3 pointer-events-auto">
             <span className="inline-block h-6 w-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-            <span className="text-sm text-gray-700">{isProcessing ? 'Processing...' : 'Working...'}</span>
+            <span className="text-sm text-gray-700">
+              {isProcessing ? "Processing..." : "Working..."}
+            </span>
           </div>
         </div>
       )}

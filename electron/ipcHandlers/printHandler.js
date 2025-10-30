@@ -24,6 +24,9 @@ function runPythonPrint(receiptData) {
     BillID: String(billId),
     date: dateStr,
     CashierID: String(receiptData.CashierID || "1"),
+    CustomerName: receiptData.CustomerName || "Unknown",
+    CustomerFName: receiptData.CustomerFName || "",
+    CustomerLName: receiptData.CustomerLName || "",
     Total: Number(receiptData.Total || 0),
     Discount: Number(receiptData.Discount || 0),
     Details: items.map((i) => ({
@@ -34,10 +37,25 @@ function runPythonPrint(receiptData) {
   };
 
   // Ensure printing folder exists
-  if (!fs.existsSync(printingDir)) fs.mkdirSync(printingDir, { recursive: true });
+  if (!fs.existsSync(printingDir))
+    fs.mkdirSync(printingDir, { recursive: true });
 
-  // Write JSON
-  fs.writeFileSync(outJson, JSON.stringify(billJson, null, 2), "utf8");
+  // Write JSON (update last_bill.json)
+  let writeSuccess = false;
+  let writtenMTime = null;
+  try {
+    fs.writeFileSync(outJson, JSON.stringify(billJson, null, 2), "utf8");
+    writeSuccess = true;
+    try {
+      const stat = fs.statSync(outJson);
+      writtenMTime = stat.mtime.toISOString();
+    } catch (sErr) {
+      // ignore stat errors
+    }
+    console.log(`printHandler: Wrote last_bill.json to ${outJson}`);
+  } catch (writeErr) {
+    console.error("printHandler: Failed to write last_bill.json:", writeErr);
+  }
 
   // Prepare diagnostics
   const exePath = path.join(printingDir, "print.exe");
@@ -52,49 +70,60 @@ function runPythonPrint(receiptData) {
     message: null,
   };
 
-  // If print.exe missing or logo missing, return JSON write success and diagnostics
+  // If print.exe missing, return JSON write success and diagnostics
   if (!fs.existsSync(exePath)) {
     resultBase.message = `print.exe not found at ${exePath}`;
-    console.warn('printHandler:', resultBase.message);
-    return resultBase;
+    console.warn("printHandler:", resultBase.message);
+    // include write diagnostics
+    return Object.assign(resultBase, { writeSuccess, writtenMTime });
   }
+
+  // If logo is missing, warn but continue — we only need to update JSON and run print.exe
   if (!fs.existsSync(logoPath)) {
-    resultBase.message = `logo.png not found at ${logoPath}`;
-    console.warn('printHandler:', resultBase.message);
-    return resultBase;
+    console.warn(
+      `printHandler: logo.png not found at ${logoPath}, continuing without logo`
+    );
   }
 
   // If we have print.exe and logo, attempt to run it but don't treat execution errors as fatal
   return new Promise((resolve) => {
-    console.log("Invoking print.exe:", exePath, outJson, logoPath);
-    execFile(
-      exePath,
-      [outJson],
-      { cwd: printingDir, windowsHide: true, timeout: 120000 },
-      (error, stdout, stderr) => {
-        resultBase.stdout = stdout?.toString().trim();
-        resultBase.stderr = stderr?.toString().trim();
-        if (error) {
-          resultBase.message = `print.exe failed: ${error.message}`;
-          console.warn('printHandler: print.exe error:', error.message);
-          // still return success:true because JSON was created
-          resolve(resultBase);
-          return;
-        }
+    console.log("Invoking print.exe:", exePath, outJson);
+    // Set an environment flag to instruct print.exe (if supported) to avoid physical printing
+    const execOptions = {
+      cwd: printingDir,
+      windowsHide: true,
+      timeout: 120000,
+      env: Object.assign({}, process.env, { NO_HARDWARE_PRINT: "1" }),
+    };
 
-        // check if PDF was generated
-        const pdfExists = fs.existsSync(outPdf);
-        resultBase.printed = !!pdfExists;
-        resultBase.pdfPath = pdfExists ? outPdf : null;
-        if (!pdfExists) resultBase.message = 'print.exe completed but PDF was not created';
+    execFile(exePath, [outJson], execOptions, (error, stdout, stderr) => {
+      resultBase.stdout = stdout?.toString().trim();
+      resultBase.stderr = stderr?.toString().trim();
+      // include write diagnostics
+      Object.assign(resultBase, { writeSuccess, writtenMTime });
+
+      if (error) {
+        resultBase.message = `print.exe failed: ${error.message}`;
+        console.warn("printHandler: print.exe error:", error.message);
+        // still return success:true because JSON was created
         resolve(resultBase);
+        return;
       }
-    );
+
+      // check if PDF was generated
+      const pdfExists = fs.existsSync(outPdf);
+      resultBase.printed = !!pdfExists;
+      resultBase.pdfPath = pdfExists ? outPdf : null;
+      if (!pdfExists)
+        resultBase.message = "print.exe completed but PDF was not created";
+      resolve(resultBase);
+    });
   });
 }
 
 ipcMain.handle("print-receipt", async (event, receiptData = {}) => {
   try {
+    console.log("Received receiptData:", receiptData);
     const result = await runPythonPrint(receiptData);
     return result;
   } catch (e) {

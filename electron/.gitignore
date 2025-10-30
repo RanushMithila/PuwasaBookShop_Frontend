@@ -11,6 +11,8 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+electron/printing/*
+
 # Runtime data
 pids
 *.pid
