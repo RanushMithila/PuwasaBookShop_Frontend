@@ -203,6 +203,14 @@ const BillingPage = () => {
   const handleAddDetails = async () => {
     try {
       setIsProcessing(true);
+      // Prepare a timestamp for last_bill.json writes
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
+        now.getDate()
+      )} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(
+        now.getSeconds()
+      )}`;
       // Lock inputs immediately when Save is pressed to prevent further edits
       setInputsLocked(true);
       // Move focus to the Print Invoice button so the user can press Enter to print
@@ -250,6 +258,54 @@ const BillingPage = () => {
         return;
       }
 
+      // After successfully adding details, write a first-last_bill.json dump without balance
+      try {
+        if (window?.electron?.ipcRenderer) {
+          const interimPayload = {
+            BillID: String(billIdToUse),
+            date: dateStr,
+            CashierID: String(window?.electron?.user?.id || "1"),
+            CustomerName: (customerName || "").trim() || "Unknown",
+            CustomerFName: (customerName || "").trim().split(/\s+/)[0] || "",
+            CustomerLName:
+              (customerName || "").trim().split(/\s+/).slice(1).join(" ") || "",
+            Total: Number(total || 0),
+            Discount: Number(totalDiscount || 0),
+            CashAmount: parseFloat(cashPayAmount) || 0,
+            CardAmount: parseFloat(cardAmount) || 0,
+            Balance: 0,
+            // Use the selectedItems so we include descriptive name and unit price
+            Details: selectedItems.map((it) => ({
+              ItemName:
+                it.itemDescription ||
+                it.Description ||
+                it.itemName ||
+                `Item ${it.inventoryID}`,
+              QTY: Number(it.QTY || 1),
+              UnitPrice: Number(
+                it.itemUnitPrice || it.UnitPrice || it.price || 0
+              ),
+            })),
+            // Instruct main process to only write JSON and not run the printer
+            WriteOnly: true,
+          };
+          console.log(
+            "Saving interim last_bill.json (write-only):",
+            interimPayload
+          );
+          try {
+            await window.electron.ipcRenderer.invoke(
+              "print-receipt",
+              interimPayload
+            );
+          } catch (ipcErr) {
+            console.warn("Failed to write interim last_bill.json:", ipcErr);
+          }
+        }
+      } catch (wErr) {
+        console.warn("Interim last_bill write failed:", wErr);
+      }
+
       // Complete billing and show returned change
       const payment = {
         CashAmount: parseFloat(cashPayAmount) || 0,
@@ -286,6 +342,53 @@ const BillingPage = () => {
 
         // Keep creditBalance as returned by the server so operator sees the change
         setCreditBalance(completeResp.data || 0);
+
+        // Update last_bill.json again with the returned balance
+        try {
+          if (window?.electron?.ipcRenderer) {
+            const finalPayload = {
+              BillID: String(billIdToUse),
+              date: dateStr,
+              CashierID: String(window?.electron?.user?.id || "1"),
+              CustomerName: (customerName || "").trim() || "Unknown",
+              CustomerFName: (customerName || "").trim().split(/\s+/)[0] || "",
+              CustomerLName:
+                (customerName || "").trim().split(/\s+/).slice(1).join(" ") ||
+                "",
+              Total: Number(total || 0),
+              Discount: Number(totalDiscount || 0),
+              CashAmount: parseFloat(cashPayAmount) || 0,
+              CardAmount: parseFloat(cardAmount) || 0,
+              Balance: Number(completeResp.data || 0),
+              Details: selectedItems.map((it) => ({
+                ItemName:
+                  it.itemDescription ||
+                  it.Description ||
+                  it.itemName ||
+                  `Item ${it.inventoryID}`,
+                QTY: Number(it.QTY || 1),
+                UnitPrice: Number(
+                  it.itemUnitPrice || it.UnitPrice || it.price || 0
+                ),
+              })),
+              WriteOnly: true,
+            };
+            console.log(
+              "Updating final last_bill.json with balance:",
+              finalPayload.Balance
+            );
+            try {
+              await window.electron.ipcRenderer.invoke(
+                "print-receipt",
+                finalPayload
+              );
+            } catch (ipcErr2) {
+              console.warn("Failed to write final last_bill.json:", ipcErr2);
+            }
+          }
+        } catch (ufErr) {
+          console.warn("Final last_bill write failed:", ufErr);
+        }
 
         // Unlock inputs so operator can start a fresh transaction
         setInputsLocked(false);
@@ -394,9 +497,6 @@ const BillingPage = () => {
 
       // Derive customer name fields from the Customer input box
       const fullCustomerName = (customerName || "").trim();
-      const nameParts = fullCustomerName.split(/\s+/).filter(Boolean);
-      const customerFName = nameParts[0] || "";
-      const customerLName = nameParts.slice(1).join(" ") || "";
 
       const payload = {
         BillID: billId,
@@ -404,10 +504,12 @@ const BillingPage = () => {
         CashierID: cashierId,
         // Send customer name instead of an ID for printing as requested
         CustomerName: fullCustomerName,
-        CustomerFName: customerFName,
-        CustomerLName: customerLName,
         Total: Number(total || 0),
         Discount: Number(totalDiscount || 0),
+        // Include payment amounts so the main process can write them to last_bill.json
+        CashAmount: parseFloat(cashPayAmount) || 0,
+        CardAmount: parseFloat(cardAmount) || 0,
+        Balance: Number(creditBalance || 0),
         Details: selectedItems.map((it) => ({
           ItemName: it.itemName || it.ItemName || it.name || "Item",
           QTY: Number(it.QTY || 1),
@@ -605,6 +707,9 @@ const BillingPage = () => {
     setCashPayAmount("0.00");
     setCardAmount("0.00");
     setCreditBalance(0);
+    // Reset local customer inputs as well
+    setCustomerName("Customer");
+    setCustomerPhone("");
     // Focus item code for convenience
     setTimeout(() => itemCodeRef.current?.focus(), 0);
   };
@@ -615,6 +720,34 @@ const BillingPage = () => {
     const onGlobalClear = () => handleClear();
     window.addEventListener("puwasa:clear", onGlobalClear);
     return () => window.removeEventListener("puwasa:clear", onGlobalClear);
+  }, []);
+
+  // Listen for main-process notifications when last_bill.json is updated.
+  // The handler updates the balance in the UI only when the writeStage is 'final'.
+  useEffect(() => {
+    const ipc = window?.electron?.ipcRenderer;
+    if (!ipc || !ipc.on) return;
+
+    const handler = (ev, data) => {
+      try {
+        console.log("Renderer received last-bill-updated:", data);
+        if (!data) return;
+        if (data.writeStage === "final" && data.Balance != null) {
+          setCreditBalance(Number(data.Balance));
+        }
+      } catch (err) {
+        console.warn("last-bill-updated handler error:", err);
+      }
+    };
+
+    ipc.on("last-bill-updated", handler);
+    return () => {
+      try {
+        ipc.removeListener("last-bill-updated", handler);
+      } catch (e) {
+        /* ignore */
+      }
+    };
   }, []);
 
   // Removed auto-filling payment inputs from total; user enters amounts explicitly.
