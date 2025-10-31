@@ -85,11 +85,23 @@ const SummaryBox = () => {
         CustomerLName: customer?.lastName || "",
         Total: total,
         Discount: totalDiscount,
+        // Include payment breakdown and balance returned by completeBill
+        CashAmount: paymentData.CashAmount || 0,
+        CardAmount: paymentData.CardAmount || 0,
+        Balance: completeResponse?.data || 0,
         // Provide a normalized Details array expected by the printer
+        // Use description as the printed item name when available, and ensure UnitPrice is correct
         Details: selectedItems.map((item) => ({
-          ItemName: item.itemName || item.ItemName || "Item",
+          ItemName:
+            item.itemDescription ||
+            item.Description ||
+            item.itemName ||
+            item.ItemName ||
+            "Item",
           QTY: Number(item.QTY || 1),
-          UnitPrice: Number(item.itemUnitPrice || item.UnitPrice || 0),
+          UnitPrice: Number(
+            item.itemUnitPrice || item.UnitPrice || item.price || 0
+          ),
         })),
       };
 
