@@ -1,11 +1,15 @@
-import { useState } from 'react';
-import useBillingStore from '../store/BillingStore';
-import useAuthStore from '../store/AuthStore';
-import { createBill, addBillDetails, completeBill } from '../services/BillingService';
-import { useSearch } from '../contexts/SearchContext';
+import { useState } from "react";
+import useBillingStore from "../store/BillingStore";
+import useAuthStore from "../store/AuthStore";
+import {
+  createBill,
+  addBillDetails,
+  completeBill,
+} from "../services/BillingService";
+import { useSearch } from "../contexts/SearchContext";
 
 const SummaryBox = () => {
-  console.log('Electron API:', window.electron);
+  console.log("Electron API:", window.electron);
   const [isProcessing, setIsProcessing] = useState(false);
   const { hideSearchResults } = useSearch();
 
@@ -32,7 +36,7 @@ const SummaryBox = () => {
     hideSearchResults();
 
     if (selectedItems.length === 0) {
-      alert('No items in cart.');
+      alert("No items in cart.");
       return;
     }
     setIsProcessing(true);
@@ -45,12 +49,13 @@ const SummaryBox = () => {
       };
 
       const billResponse = await createBill(billData); // Ensure createBill is defined and imported
-      if (!billResponse.status) throw new Error(billResponse.error_message || 'Failed to create bill.');
+      if (!billResponse.status)
+        throw new Error(billResponse.error_message || "Failed to create bill.");
 
-  const billId = billResponse.data;
-  setCurrentBillId(billId);
+      const billId = billResponse.data;
+      setCurrentBillId(billId);
 
-      const itemsPayload = selectedItems.map(item => ({
+      const itemsPayload = selectedItems.map((item) => ({
         InventoryID: item.inventoryID,
         Discount: item.Discount,
         QTY: item.QTY,
@@ -59,7 +64,10 @@ const SummaryBox = () => {
 
       const paymentData = { CashAmount: total, CardAmount: 0 };
       const completeResponse = await completeBill(billId, paymentData);
-      if (!completeResponse.status) throw new Error(completeResponse.error_message || 'Failed to complete billing.');
+      if (!completeResponse.status)
+        throw new Error(
+          completeResponse.error_message || "Failed to complete billing."
+        );
 
       alert(`${completeResponse.message}\nBalance: ${completeResponse.data}`);
 
@@ -68,23 +76,39 @@ const SummaryBox = () => {
 
       const receiptData = {
         BillID: storeBillId,
-        date: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        date: new Date().toISOString().replace("T", " ").slice(0, 19),
         CashierID: user?.id || 1,
+        CustomerName:
+          `${customer?.firstName || ""} ${customer?.lastName || ""}`.trim() ||
+          "Unknown",
+        CustomerFName: customer?.firstName || "",
+        CustomerLName: customer?.lastName || "",
         Total: total,
         Discount: totalDiscount,
         // Provide a normalized Details array expected by the printer
-        Details: selectedItems.map(item => ({
-          ItemName: item.itemName || item.ItemName || 'Item',
+        Details: selectedItems.map((item) => ({
+          ItemName: item.itemName || item.ItemName || "Item",
           QTY: Number(item.QTY || 1),
           UnitPrice: Number(item.itemUnitPrice || item.UnitPrice || 0),
         })),
       };
 
-      const printResponse = await window.electron.ipcRenderer.invoke('print-receipt', receiptData);
-      if (!printResponse.success) throw new Error(printResponse.error);
+      setIsProcessing(true); // Show animation during printing
 
-      alert('Receipt printed successfully.');
-      resetTransaction();
+      try {
+        const printResponse = await window.electron.ipcRenderer.invoke(
+          "print-receipt",
+          receiptData
+        );
+        if (!printResponse.success) throw new Error(printResponse.error);
+
+        alert("Receipt printed successfully.");
+        resetTransaction(); // Clear all data in the billing page
+      } catch (error) {
+        alert(`An error occurred: ${error.message}`);
+      } finally {
+        setIsProcessing(false); // Hide animation after printing
+      }
     } catch (error) {
       alert(`An error occurred: ${error.message}`);
     } finally {
@@ -92,12 +116,57 @@ const SummaryBox = () => {
     }
   };
 
-  const handleHoldBill = () => {
+  const handleHoldBill = async () => {
     // Hide search results when Hold Bill is clicked
     hideSearchResults();
-    
-    // Add your hold bill logic here
-    processBill(false);
+
+    if (selectedItems.length === 0) {
+      alert("No items in cart to hold.");
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      // Create a bill (if needed) and add details but do NOT complete the bill
+      const billData = {
+        LocationID: location?.id || 1,
+        CustomerID: customer?.id || 1,
+        CashierID: user?.id || 1,
+      };
+
+      const createResp = await createBill(billData);
+      if (!createResp || !createResp.status) {
+        throw new Error(
+          createResp?.error_message || "Failed to create bill for hold"
+        );
+      }
+
+      const billId = createResp.data;
+      setCurrentBillId(billId);
+
+      const itemsPayload = selectedItems.map((item) => ({
+        InventoryID: item.inventoryID,
+        Discount: item.Discount,
+        QTY: item.QTY,
+      }));
+
+      const detailsResp = await addBillDetails({
+        BillID: billId,
+        Items: itemsPayload,
+      });
+      if (!detailsResp || !detailsResp.status) {
+        throw new Error(
+          detailsResp?.error_message || "Failed to save held bill details"
+        );
+      }
+
+      alert(`Temporary bill saved (ID: ${billId})`);
+    } catch (err) {
+      console.error("Hold bill failed:", err);
+      alert("Failed to hold bill: " + (err?.message || err));
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -105,11 +174,25 @@ const SummaryBox = () => {
       <h2 className="text-xl font-bold mb-4">Order Summary</h2>
 
       <div className="flex-grow space-y-2">
-        <div className="flex justify-between text-sm"><span>Total Items:</span><span className="font-medium">{totalItems}</span></div>
-        <div className="flex justify-between text-sm"><span>Subtotal:</span><span className="font-medium">Rs:{subtotal.toFixed(2)}</span></div>
-        {totalDiscount > 0 && (<div className="flex justify-between text-sm text-green-600"><span>Discount:</span><span className="font-medium">-Rs:{totalDiscount.toFixed(2)}</span></div>)}
+        <div className="flex justify-between text-sm">
+          <span>Total Items:</span>
+          <span className="font-medium">{totalItems}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span>Subtotal:</span>
+          <span className="font-medium">Rs:{subtotal.toFixed(2)}</span>
+        </div>
+        {totalDiscount > 0 && (
+          <div className="flex justify-between text-sm text-green-600">
+            <span>Discount:</span>
+            <span className="font-medium">-Rs:{totalDiscount.toFixed(2)}</span>
+          </div>
+        )}
         <hr className="my-2" />
-        <div className="flex justify-between text-lg font-bold"><span>Total:</span><span>Rs:{total.toFixed(2)}</span></div>
+        <div className="flex justify-between text-lg font-bold">
+          <span>Total:</span>
+          <span>Rs:{total.toFixed(2)}</span>
+        </div>
       </div>
 
       <div className="space-y-2 pt-4">
@@ -118,21 +201,29 @@ const SummaryBox = () => {
           disabled={isProcessing || selectedItems.length === 0}
           className="w-full bg-yellow-500 text-white py-3 px-4 rounded-lg font-semibold hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
         >
-          {isProcessing ? 'Processing...' : 'Hold Bill'}
+          {isProcessing ? "Processing..." : "Hold Bill"}
         </button>
         <button
           onClick={handlePayAndPrintReceipt}
           disabled={isProcessing || selectedItems.length === 0}
           className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
         >
-          {isProcessing ? 'Processing...' : 'Pay Now'}
+          {isProcessing ? "Processing..." : "Pay Now"}
         </button>
         <button
           onClick={() => {
             // Clear store-level transaction
-            try { resetTransaction(); } catch (e) { /* ignore */ }
+            try {
+              resetTransaction();
+            } catch (e) {
+              /* ignore */
+            }
             // Dispatch a global event so pages with local UI can clear too
-            try { window.dispatchEvent(new CustomEvent('puwasa:clear')); } catch (e) { /* ignore */ }
+            try {
+              window.dispatchEvent(new CustomEvent("puwasa:clear"));
+            } catch (e) {
+              /* ignore */
+            }
           }}
           className="w-full bg-white text-red-600 py-3 px-4 rounded-lg font-semibold border border-red-200 hover:bg-red-50 transition-colors"
         >
