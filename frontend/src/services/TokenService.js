@@ -1,5 +1,5 @@
 import HttpClient from "./HttpClient";
-import useTokenStore from "../store/TokenStore";
+import useAuthStore from "../store/AuthStore";
 
 class TokenService {
   /**
@@ -29,8 +29,8 @@ class TokenService {
   redirectToLogin() {
     console.log("Redirecting to login page due to expired tokens");
     // Clear tokens before redirect
-    const tokenStore = useTokenStore.getState();
-    tokenStore.clearTokens();
+    const authStore = useAuthStore.getState();
+    authStore.clearSession();
 
     // Redirect to login page
     window.location.href = "/login"; // or use your router navigation
@@ -42,18 +42,18 @@ class TokenService {
    */
   async refreshToken() {
     try {
-      const tokenStore = useTokenStore.getState();
-      const refreshToken = tokenStore.refreshToken;
+      const authStore = useAuthStore.getState();
+      const refreshToken = authStore.refreshToken;
 
       console.log("=== TOKEN REFRESH DEBUG ===");
       console.log("Current tokens in store:", {
-        accessToken: tokenStore.accessToken
-          ? `${tokenStore.accessToken.substring(0, 20)}...`
+        accessToken: authStore.accessToken
+          ? `${authStore.accessToken.substring(0, 20)}...`
           : "null",
         refreshToken: refreshToken
           ? `${refreshToken.substring(0, 20)}...`
           : "null",
-        hasAccessToken: !!tokenStore.accessToken,
+        hasAccessToken: !!authStore.accessToken,
         hasRefreshToken: !!refreshToken,
       });
 
@@ -110,8 +110,8 @@ class TokenService {
 
       // Clear tokens for other errors
       console.log("🧹 Clearing tokens due to refresh failure");
-      const tokenStore = useTokenStore.getState();
-      tokenStore.clearTokens();
+      const authStore = useAuthStore.getState();
+      authStore.clearSession();
 
       return {
         success: false,
@@ -126,8 +126,8 @@ class TokenService {
    */
   async ensureValidToken() {
     try {
-      const tokenStore = useTokenStore.getState();
-      const accessToken = tokenStore.accessToken;
+      const authStore = useAuthStore.getState();
+      const accessToken = authStore.accessToken;
 
       // If no access token, try to refresh
       if (!accessToken) {
@@ -159,8 +159,8 @@ class TokenService {
   async getValidAccessToken() {
     const isValid = await this.ensureValidToken();
     if (isValid) {
-      const tokenStore = useTokenStore.getState();
-      return tokenStore.accessToken;
+      const authStore = useAuthStore.getState();
+      return authStore.accessToken;
     }
     return null;
   }
@@ -170,8 +170,8 @@ class TokenService {
    * @returns {boolean} True if user needs to login
    */
   requiresLogin() {
-    const tokenStore = useTokenStore.getState();
-    const refreshToken = tokenStore.refreshToken;
+    const authStore = useAuthStore.getState();
+    const refreshToken = authStore.refreshToken;
     return !refreshToken || this.isTokenExpired(refreshToken);
   }
 }

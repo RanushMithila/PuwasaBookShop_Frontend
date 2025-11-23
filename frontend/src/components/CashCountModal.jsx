@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import useTokenStore from '../store/TokenStore';
+import React, { useState, useEffect } from "react";
+import useAuthStore from "../store/AuthStore";
 
 const CashCountModal = ({ isOpen, onClose }) => {
-  const clearTokens = useTokenStore((state) => state.clearTokens);
-  
+  const clearSession = useAuthStore((state) => state.clearSession);
+
   const [denominations] = useState([
     { value: 5000, count: 0 },
     { value: 1000, count: 0 },
@@ -12,16 +12,16 @@ const CashCountModal = ({ isOpen, onClose }) => {
     { value: 50, count: 0 },
     { value: 20, count: 0 },
     { value: 10, count: 0 },
-    { value: 5, count: 0 }
+    { value: 5, count: 0 },
   ]);
 
-  const [counts, setCounts] = useState(denominations.map(() => ''));
+  const [counts, setCounts] = useState(denominations.map(() => ""));
   const [total, setTotal] = useState(0);
 
   useEffect(() => {
     const calculatedTotal = denominations.reduce((sum, denom, index) => {
       const count = parseInt(counts[index]) || 0;
-      return sum + (denom.value * count);
+      return sum + denom.value * count;
     }, 0);
     setTotal(calculatedTotal);
   }, [counts, denominations]);
@@ -33,21 +33,21 @@ const CashCountModal = ({ isOpen, onClose }) => {
   };
 
   const handleSave = () => {
-    console.log('Cash count saved:', {
+    console.log("Cash count saved:", {
       denominations: denominations.map((denom, index) => ({
         value: denom.value,
         count: parseInt(counts[index]) || 0,
-        total: denom.value * (parseInt(counts[index]) || 0)
+        total: denom.value * (parseInt(counts[index]) || 0),
       })),
-      grandTotal: total
+      grandTotal: total,
     });
-    
+
     // TODO: Add API call to save cash count
-    
+
     // Logout user after saving
-    clearTokens();
-    alert('Cash count saved. Logging out...');
-    window.location.href = '/';
+    clearSession();
+    alert("Cash count saved. Logging out...");
+    window.location.href = "/";
   };
 
   if (!isOpen) return null;
@@ -64,19 +64,23 @@ const CashCountModal = ({ isOpen, onClose }) => {
             ×
           </button>
         </div>
-        
+
         <div className="border border-black">
           <table className="w-full">
             <thead>
               <tr className="border-b border-black">
-                <th className="border-r border-black p-2 text-left">Denomination</th>
+                <th className="border-r border-black p-2 text-left">
+                  Denomination
+                </th>
                 <th className="p-2 text-left">Count</th>
               </tr>
             </thead>
             <tbody>
               {denominations.map((denom, index) => (
                 <tr key={denom.value} className="border-b border-black">
-                  <td className="border-r border-black p-2">Rs: {denom.value}</td>
+                  <td className="border-r border-black p-2">
+                    Rs: {denom.value}
+                  </td>
                   <td className="p-2">
                     <input
                       type="number"
@@ -95,7 +99,7 @@ const CashCountModal = ({ isOpen, onClose }) => {
             </tbody>
           </table>
         </div>
-        
+
         <div className="flex justify-end space-x-3 mt-6">
           <button
             onClick={onClose}
