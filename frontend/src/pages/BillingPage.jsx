@@ -8,7 +8,7 @@ import CashInOutModal from "../components/CashInOutModal";
 import CashCountModal from "../components/CashCountModal";
 import TemporaryBillsModal from "../components/TemporaryBillsModal";
 import SearchByNameModal from "../components/SearchByNameModal"; // Import the new modal
-import useTokenStore from "../store/TokenStore";
+import useAuthStore from "../store/AuthStore";
 import {
   createBill,
   addBillDetails,
@@ -30,8 +30,8 @@ const BillingPage = () => {
   const resetTransaction = useBillingStore((s) => s.resetTransaction);
   const currentBillId = useBillingStore((s) => s.currentBillId);
 
-  // Token store
-  const accessToken = useTokenStore((s) => s.accessToken);
+  // Auth store (tokens)
+  const accessToken = useAuthStore((s) => s.accessToken);
 
   // UI state
   const [showCashInOut, setShowCashInOut] = useState(false);
@@ -120,6 +120,14 @@ const BillingPage = () => {
   // Item code search with keyboard navigation
   useEffect(() => {
     const handler = (e) => {
+      // Ignore Enter key if it's coming from an input field (quantity, discount, etc.)
+      // Only handle Enter for the item code search suggestions
+      const target = e.target;
+      if (target && target.tagName === "INPUT" && target.type === "number") {
+        // Let the input field handle its own Enter key
+        return;
+      }
+
       if (!suggestions || suggestions.length === 0) return;
       if (e.key === "ArrowDown") {
         setHighlightIndex((i) => Math.min(suggestions.length - 1, i + 1));

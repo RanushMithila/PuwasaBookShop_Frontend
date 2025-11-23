@@ -1,15 +1,15 @@
-import { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { login } from '../services/AuthService';
-import useTokenStore from '../store/TokenStore';
+import { useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { login } from "../services/AuthService";
+import useAuthStore from "../store/AuthStore";
 
 const LoginForm = () => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const navigate = useNavigate();
-  const setTokens = useTokenStore((state) => state.setTokens);
-  
+  const setTokens = useAuthStore((state) => state.setTokens);
+
   // Create a ref for the password input
   const passwordInputRef = useRef(null);
 
@@ -18,15 +18,15 @@ const LoginForm = () => {
     try {
       const { access_token, refresh_token } = await login(username, password);
       setTokens(access_token, refresh_token);
-      navigate('/billing');
+      navigate("/billing");
     } catch (err) {
-      setError('Invalid username or password');
+      setError("Invalid username or password");
     }
   };
 
   // Handle Enter key press in username field
   const handleUsernameKeyDown = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault(); // Prevent form submission
       passwordInputRef.current?.focus(); // Focus password field
     }
@@ -65,8 +65,8 @@ const LoginForm = () => {
         </button>
       </form>
       <p className="text-xs text-center text-gray-500 mt-4 px-4">
-        By clicking continue, you agree to our{' '}
-        <span className="underline cursor-pointer">Terms of Service</span> and{' '}
+        By clicking continue, you agree to our{" "}
+        <span className="underline cursor-pointer">Terms of Service</span> and{" "}
         <span className="underline cursor-pointer">Privacy Policy</span>
       </p>
     </div>
