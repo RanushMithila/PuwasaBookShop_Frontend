@@ -13,19 +13,21 @@ const SummaryBox = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const { hideSearchResults } = useSearch();
 
-  const { user, location } = useAuthStore.getState();
-  const {
-    getTotal,
-    getTotalDiscount,
-    getSubtotal,
-    getTotalItems,
-    resetTransaction,
-    setCurrentBillId,
-  } = useBillingStore.getState();
+  // Use proper Zustand hooks for reactivity
+  const user = useAuthStore((state) => state.user);
+  const location = useAuthStore((state) => state.location);
 
+  // Get billing store selectors and state
   const selectedItems = useBillingStore((state) => state.selectedItems);
   const customer = useBillingStore((state) => state.customer);
+  const resetTransaction = useBillingStore((state) => state.resetTransaction);
+  const setCurrentBillId = useBillingStore((state) => state.setCurrentBillId);
+  const getTotal = useBillingStore((state) => state.getTotal);
+  const getTotalDiscount = useBillingStore((state) => state.getTotalDiscount);
+  const getSubtotal = useBillingStore((state) => state.getSubtotal);
+  const getTotalItems = useBillingStore((state) => state.getTotalItems);
 
+  // Compute values using the getter functions
   const total = getTotal();
   const totalDiscount = getTotalDiscount();
   const subtotal = getSubtotal();

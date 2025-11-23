@@ -1,15 +1,15 @@
 {
-  "BillID": "86",
-  "date": "2025-10-31 21:37:15",
+  "BillID": "91",
+  "date": "2025-11-23 17:55:21",
   "CashierID": "1",
-  "CustomerName": "pasan",
-  "CustomerFName": "pasan",
+  "CustomerName": "Customer",
+  "CustomerFName": "Customer",
   "CustomerLName": "",
   "Total": 290,
   "Discount": 0,
-  "CashAmount": 300,
+  "CashAmount": 1000,
   "CardAmount": 0,
-  "Balance": -10,
+  "Balance": -710,
   "Details": [
     {
       "ItemName": "Fundamental of Vipassana",

@@ -1,4 +1,4 @@
-import useTokenStore from "../store/TokenStore";
+import useAuthStore from "../store/AuthStore";
 
 class HttpClient {
   constructor() {
@@ -24,18 +24,18 @@ class HttpClient {
   // Refresh token method
   async refreshAccessToken() {
     try {
-      const tokenStore = useTokenStore.getState();
-      const refreshToken = tokenStore.refreshToken;
+      const authStore = useAuthStore.getState();
+      const refreshToken = authStore.refreshToken;
 
       console.log("=== HTTPCLIENT TOKEN REFRESH DEBUG ===");
       console.log("Current tokens in HttpClient:", {
-        accessToken: tokenStore.accessToken
-          ? `${tokenStore.accessToken.substring(0, 20)}...`
+        accessToken: authStore.accessToken
+          ? `${authStore.accessToken.substring(0, 20)}...`
           : "null",
         refreshToken: refreshToken
           ? `${refreshToken.substring(0, 20)}...`
           : "null",
-        hasAccessToken: !!tokenStore.accessToken,
+        hasAccessToken: !!authStore.accessToken,
         hasRefreshToken: !!refreshToken,
       });
 
@@ -115,7 +115,7 @@ class HttpClient {
       });
 
       if (data && data.access_token) {
-        tokenStore.updateAccessToken(data.access_token);
+        authStore.updateAccessToken(data.access_token);
         console.log("✅ Access token updated successfully via HttpClient");
         console.log(
           "🎯 New token preview:",
@@ -134,8 +134,8 @@ class HttpClient {
         stack: error.stack?.substring(0, 200) + "...",
       });
 
-      const tokenStore = useTokenStore.getState();
-      tokenStore.clearTokens();
+      const authStore = useAuthStore.getState();
+      authStore.clearSession();
       throw error;
     }
   }
@@ -143,12 +143,12 @@ class HttpClient {
   // Check if user is authenticated
   isAuthenticated() {
     try {
-      const tokenStore = useTokenStore.getState();
+      const authStore = useAuthStore.getState();
       const token =
-        tokenStore.getAccessToken?.() ||
-        tokenStore.accessToken ||
-        tokenStore.access_token ||
-        tokenStore.token;
+        authStore.getAccessToken?.() ||
+        authStore.accessToken ||
+        authStore.access_token ||
+        authStore.token;
       return !!token && typeof token === "string" && token.length > 10;
     } catch (error) {
       console.error("Error checking authentication:", error);
@@ -162,9 +162,9 @@ class HttpClient {
 
     // Clear any existing tokens
     try {
-      const tokenStore = useTokenStore.getState();
-      if (tokenStore.clearTokens) {
-        tokenStore.clearTokens();
+      const authStore = useAuthStore.getState();
+      if (authStore.clearTokens) {
+        authStore.clearSession();
       }
     } catch (error) {
       console.warn("Failed to clear tokens:", error);
@@ -187,12 +187,12 @@ class HttpClient {
       }
 
       try {
-        const tokenStore = useTokenStore.getState();
+        const authStore = useAuthStore.getState();
         const token =
-          tokenStore.getAccessToken?.() ||
-          tokenStore.accessToken ||
-          tokenStore.access_token ||
-          tokenStore.token;
+          authStore.getAccessToken?.() ||
+          authStore.accessToken ||
+          authStore.access_token ||
+          authStore.token;
 
         headers.Authorization = `Bearer ${token}`;
       } catch (error) {
@@ -217,12 +217,12 @@ class HttpClient {
       }
 
       try {
-        const tokenStore = useTokenStore.getState();
+        const authStore = useAuthStore.getState();
         const token =
-          tokenStore.getAccessToken?.() ||
-          tokenStore.accessToken ||
-          tokenStore.access_token ||
-          tokenStore.token;
+          authStore.getAccessToken?.() ||
+          authStore.accessToken ||
+          authStore.access_token ||
+          authStore.token;
 
         headers.Authorization = `Bearer ${token}`;
       } catch (error) {
@@ -301,8 +301,8 @@ class HttpClient {
 
   // Retry a failed request with new token
   async retryRequest(originalRequest) {
-    const tokenStore = useTokenStore.getState();
-    const token = tokenStore.getAccessToken?.() || tokenStore.accessToken;
+    const authStore = useAuthStore.getState();
+    const token = authStore.getAccessToken?.() || authStore.accessToken;
 
     if (originalRequest.headers) {
       originalRequest.headers.Authorization = `Bearer ${token}`;
@@ -439,12 +439,12 @@ class HttpClient {
           throw new Error("Authentication required");
         }
 
-        const tokenStore = useTokenStore.getState();
+        const authStore = useAuthStore.getState();
         const token =
-          tokenStore.getAccessToken?.() ||
-          tokenStore.accessToken ||
-          tokenStore.access_token ||
-          tokenStore.token;
+          authStore.getAccessToken?.() ||
+          authStore.accessToken ||
+          authStore.access_token ||
+          authStore.token;
 
         headers.Authorization = `Bearer ${token}`;
       }
