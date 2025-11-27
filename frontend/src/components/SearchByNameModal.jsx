@@ -53,9 +53,18 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
     return () => debouncedSearch.cancel();
   }, [searchQuery]);
 
+  // Clear state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchQuery("");
+      setResults([]);
+      setHighlightIndex(-1);
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     const handler = (e) => {
-      if (results.length === 0) return;
+      if (!isOpen || results.length === 0) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setHighlightIndex((prev) => Math.min(results.length - 1, prev + 1));
@@ -71,7 +80,7 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [results, highlightIndex]);
+  }, [isOpen, results, highlightIndex]);
 
   const handleSelectItem = (item) => {
     onSelectItem(item);

@@ -330,24 +330,9 @@ const BillingPage = () => {
               JSON.stringify(completeResp))
         );
       }
-      // After a successful Save (complete billing), clear all UI and store state
-      // except keep the change/balance amount so the operator can see it.
+      // After a successful Save (complete billing), we DO NOT clear the UI.
+      // The user wants to see the details. Clearing happens on Print or Clear button.
       if (completeResp && completeResp.status === true) {
-        // Clear store transaction (items, customer, currentBillId)
-        try {
-          resetTransaction();
-        } catch (e) {
-          // ignore
-        }
-
-        // Clear local UI fields
-        setItemCode("");
-        setSuggestions([]);
-        setHighlightIndex(-1);
-        setCashPayAmount("0.00");
-        setCardAmount("0.00");
-        setCurrentBillId(null);
-
         // Keep creditBalance as returned by the server so operator sees the change
         setCreditBalance(completeResp.data || 0);
 
@@ -397,19 +382,13 @@ const BillingPage = () => {
         } catch (ufErr) {
           console.warn("Final last_bill write failed:", ufErr);
         }
-
-        // Unlock inputs so operator can start a fresh transaction
-        setInputsLocked(false);
-
-        // Focus item code for convenience
-        setTimeout(() => itemCodeRef.current?.focus(), 0);
       }
     } catch (err) {
       console.error("Add details failed:", err);
-      // On failure, unlock inputs so the operator can correct and retry
-      setInputsLocked(false);
       alert("Error saving bill details: " + err.message);
     } finally {
+      // Always unlock inputs and stop processing spinner, regardless of success or error
+      setInputsLocked(false);
       setIsProcessing(false);
     }
   };
@@ -1049,6 +1028,13 @@ const BillingPage = () => {
             ref={saveButtonRef}
             tabIndex={0}
             onClick={handleAddDetails}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAddDetails();
+                setTimeout(() => printButtonRef.current?.focus(), 0);
+              }
+            }}
             disabled={selectedItems.length === 0 || isProcessing}
             className={`w-full px-3 py-2 rounded-lg flex items-center justify-center gap-2 transition ${
               selectedItems.length === 0 || isProcessing
