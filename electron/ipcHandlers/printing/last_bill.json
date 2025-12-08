@@ -1,17 +1,17 @@
 {
-  "BillID": "19",
-  "date": "2025-12-08 12:15:38",
+  "BillID": "35",
+  "date": "2025-12-08 21:49:04",
   "CashierID": "1",
   "CashierName": "ranushmithila45@gmail.com",
   "CustomerName": "Customer",
   "CustomerFName": "Customer",
   "CustomerLName": "",
   "Subtotal": 250,
-  "Total": 240,
-  "Discount": 10,
-  "CashAmount": 410,
+  "Total": 250,
+  "Discount": 0,
+  "CashAmount": 1000,
   "CardAmount": 0,
-  "Balance": -170,
+  "Balance": -500,
   "Details": [
     {
       "ItemName": "Balangoda Mahha nahimi",
