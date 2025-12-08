@@ -9,6 +9,7 @@ import CashCountModal from "../components/CashCountModal";
 import TemporaryBillsModal from "../components/TemporaryBillsModal";
 import SearchByNameModal from "../components/SearchByNameModal"; // Import the new modal
 import useAuthStore from "../store/AuthStore";
+import TokenService from "../services/TokenService";
 import {
   createBill,
   addBillDetails,
@@ -108,6 +109,14 @@ const BillingPage = () => {
   };
 
   const loginRole = extractRole(accessToken);
+
+  // Extract cashier name from token
+  const getCashierName = () => {
+    if (!accessToken) return "";
+    const details = TokenService.getUserDetails(accessToken);
+    return details?.sub || details?.username || details?.name || "Unknown";
+  };
+  const cashierName = getCashierName();
 
   // Removed automatic bill creation on mount to avoid empty placeholder bills.
 
@@ -272,11 +281,12 @@ const BillingPage = () => {
           const interimPayload = {
             BillID: String(billIdToUse),
             date: dateStr,
-            CashierID: String(window?.electron?.user?.id || "1"),
+            CashierName: cashierName,
             CustomerName: (customerName || "").trim() || "Unknown",
             CustomerFName: (customerName || "").trim().split(/\s+/)[0] || "",
             CustomerLName:
               (customerName || "").trim().split(/\s+/).slice(1).join(" ") || "",
+            Subtotal: Number(subtotal || 0),
             Total: Number(total || 0),
             Discount: Number(totalDiscount || 0),
             CashAmount: parseFloat(cashPayAmount) || 0,
@@ -342,12 +352,13 @@ const BillingPage = () => {
             const finalPayload = {
               BillID: String(billIdToUse),
               date: dateStr,
-              CashierID: String(window?.electron?.user?.id || "1"),
+              CashierName: cashierName,
               CustomerName: (customerName || "").trim() || "Unknown",
               CustomerFName: (customerName || "").trim().split(/\s+/)[0] || "",
               CustomerLName:
                 (customerName || "").trim().split(/\s+/).slice(1).join(" ") ||
                 "",
+              Subtotal: Number(subtotal || 0),
               Total: Number(total || 0),
               Discount: Number(totalDiscount || 0),
               CashAmount: parseFloat(cashPayAmount) || 0,
@@ -488,9 +499,10 @@ const BillingPage = () => {
       const payload = {
         BillID: billId,
         date: dateStr,
-        CashierID: cashierId,
+        CashierName: cashierName,
         // Send customer name instead of an ID for printing as requested
         CustomerName: fullCustomerName,
+        Subtotal: Number(subtotal || 0),
         Total: Number(total || 0),
         Discount: Number(totalDiscount || 0),
         // Include payment amounts so the main process can write them to last_bill.json
@@ -787,6 +799,10 @@ const BillingPage = () => {
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value)}
             />
+            <label className="text-sm ml-2">Cashier</label>
+            <div className="border px-2 py-1 min-w-[100px] bg-gray-50 text-sm">
+              {cashierName}
+            </div>
           </div>
 
           <div className="flex-1"></div>

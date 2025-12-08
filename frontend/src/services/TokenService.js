@@ -24,6 +24,31 @@ class TokenService {
   }
 
   /**
+   * Get user details from the JWT token
+   * @param {string} token - JWT token
+   * @returns {Object|null} User details payload or null
+   */
+  getUserDetails(token) {
+    if (!token) return null;
+    try {
+      const base64Url = token.split(".")[1];
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split("")
+          .map(function (c) {
+            return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+          })
+          .join("")
+      );
+      return JSON.parse(jsonPayload);
+    } catch (error) {
+      console.error("Error decoding token payload:", error);
+      return null;
+    }
+  }
+
+  /**
    * Redirect user to login page
    */
   redirectToLogin() {
