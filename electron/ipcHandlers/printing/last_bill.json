@@ -1,20 +1,22 @@
 {
-  "BillID": "97",
-  "date": "2025-11-27 23:26:15",
+  "BillID": "19",
+  "date": "2025-12-08 12:15:38",
   "CashierID": "1",
+  "CashierName": "ranushmithila45@gmail.com",
   "CustomerName": "Customer",
   "CustomerFName": "Customer",
   "CustomerLName": "",
-  "Total": 290,
-  "Discount": 0,
-  "CashAmount": 0,
-  "CardAmount": 2000,
-  "Balance": -1710,
+  "Subtotal": 250,
+  "Total": 240,
+  "Discount": 10,
+  "CashAmount": 410,
+  "CardAmount": 0,
+  "Balance": -170,
   "Details": [
     {
-      "ItemName": "Fundamental of Vipassana",
+      "ItemName": "Balangoda Mahha nahimi",
       "QTY": 1,
-      "UnitPrice": 290
+      "UnitPrice": 250
     }
   ]
 }
