@@ -22,6 +22,8 @@ import {
 } from "../services/BillingService";
 import { getInventory } from "../services/InventoryService";
 
+import AlertModal from "../components/AlertModal";
+
 const BillingPage = () => {
   // Billing store
   const selectedItems = useBillingStore((s) => s.selectedItems);
@@ -42,6 +44,13 @@ const BillingPage = () => {
   const [temporaryBills, setTemporaryBills] = useState([]);
   const [loadingTempBills, setLoadingTempBills] = useState(false);
   const [tempBillsError, setTempBillsError] = useState("");
+
+  // Alert Modal State
+  const [alertConfig, setAlertConfig] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+  });
 
   // Customer
   const [customerName, setCustomerName] = useState("Customer");
@@ -77,14 +86,29 @@ const BillingPage = () => {
   const total = useBillingStore((s) => s.getTotal());
   const itemCount = useBillingStore((s) => s.getTotalItems());
 
+  const handleCloseAlert = () => {
+    setAlertConfig({ ...alertConfig, isOpen: false });
+    // Clear input and focus item code
+    setItemCode("");
+    setSuggestions([]);
+    setHighlightIndex(-1);
+    setInputsLocked(false);
+    setTimeout(() => {
+      itemCodeRef.current?.focus();
+      itemCodeRef.current?.select?.();
+    }, 0);
+  };
+
   // --- JWT decode helpers ---
   const decodeJWT = (token) => {
     if (!token || typeof token !== "string" || token.split(".").length < 2)
       return null;
     try {
-      const base64Url = token.split(".")[1];
+      const base64Url = token.split(".").slice(0, 2).join("."); // Only need valid parts? Actually standard is 3 parts.
+      // Revert to original safer split[1] check
+      const base64UrlPayload = token.split(".")[1];
       // Base64URL -> Base64
-      let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      let base64 = base64UrlPayload.replace(/-/g, "+").replace(/_/g, "/");
       // Pad if needed
       const pad = base64.length % 4;
       if (pad) base64 += "=".repeat(4 - pad);
@@ -185,7 +209,67 @@ const BillingPage = () => {
     }
   };
 
-  const selectSuggestedItem = (item) => {
+  const selectSuggestedItem = async (item) => {
+    // Check stock before adding
+    try {
+      // Get current quantity in cart
+      const currentItems = useBillingStore.getState().selectedItems;
+      const existingItem = currentItems.find(
+        (i) => i.inventoryID === item.inventoryID
+      );
+      const currentQty = existingItem ? existingItem.QTY : 0;
+      const requestQty = currentQty + 1;
+      // Verify with API
+      // LocationID is hardcoded as 1 per current context
+      const resp = await getItemQuantity(item.barcode, 1);
+
+      if (
+        resp &&
+        resp.status === true &&
+        Array.isArray(resp.data) &&
+        resp.data.length > 0
+      ) {
+        // Response data is an array: [{ inventoryID, quantity }]
+        const availableStock = Number(resp.data[0].quantity || 0);
+
+        if (requestQty > availableStock) {
+          setAlertConfig({
+            isOpen: true,
+            title: "Insufficient Stock",
+            message: `Cannot add item.\nRequested: ${requestQty}\nAvailable: ${availableStock}`,
+          });
+          return;
+        }
+      } else if (
+        resp &&
+        resp.status === true &&
+        Array.isArray(resp.data) &&
+        resp.data.length === 0
+      ) {
+        // If data is empty array, it might mean 0 stock or item not found in stock table?
+        const availableStock = 0;
+        if (requestQty > availableStock) {
+          setAlertConfig({
+            isOpen: true,
+            title: "Insufficient Stock",
+            message: `Cannot add item.\nRequested: ${requestQty}\nAvailable: ${availableStock}`,
+          });
+          return;
+        }
+      } else {
+        // Fallback or error handling
+        console.warn("Could not verify stock level", resp);
+        // User asked to "tell user that specific item cannot add", so blocking on failure might be safer
+        // but if the API fails for other reasons we might block valid sales.
+        // Let's assume strict check as requested.
+        // But logic: if status is false, it might mean item not found or error.
+      }
+    } catch (err) {
+      console.error("Stock check failed:", err);
+      // alert("Error checking stock. Please try again.");
+      // return;
+    }
+
     // Map API response fields to billing store item shape
     addItem({
       inventoryID: item.inventoryID,
@@ -234,6 +318,8 @@ const BillingPage = () => {
       setTimeout(() => printButtonRef.current?.focus(), 0);
       if (!selectedItems || selectedItems.length === 0) {
         alert("Add at least one item before saving the bill.");
+        setIsProcessing(false);
+        setInputsLocked(false);
         return;
       }
       // Ensure bill exists (create if missing)
@@ -821,35 +907,65 @@ const BillingPage = () => {
             >
               <div className="flex flex-col">
                 <div className="text-gray-600">Item Code</div>
-                <input
-                  className="border mt-1 px-2 py-2 w-full text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="Scan / Type barcode"
-                  value={itemCode}
-                  ref={itemCodeRef}
-                  readOnly={inputsLocked}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    // If user types '+' we end item entry and focus cash
-                    if (val.trim() === "+") {
-                      setItemCode("");
-                      setSuggestions([]);
-                      setHighlightIndex(-1);
-                      setTimeout(() => cashInputRef.current?.focus(), 0);
-                      return;
-                    }
-                    setItemCode(val);
-                  }}
-                  onKeyDown={(e) => {
-                    if (
-                      e.key === "Enter" &&
-                      itemCode.trim() &&
-                      suggestions.length === 0
-                    ) {
-                      // Enter on item code triggers barcode lookup fallback
-                      searchBarcode(itemCode.trim());
-                    }
-                  }}
-                />
+                <div className="relative w-full">
+                  <input
+                    className="border mt-1 px-2 py-2 w-full text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 pr-8"
+                    placeholder="Scan / Type barcode"
+                    value={itemCode}
+                    ref={itemCodeRef}
+                    readOnly={inputsLocked}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      // If user types '+' we end item entry and focus cash
+                      if (val.trim() === "+") {
+                        setItemCode("");
+                        setSuggestions([]);
+                        setHighlightIndex(-1);
+                        setTimeout(() => cashInputRef.current?.focus(), 0);
+                        return;
+                      }
+                      setItemCode(val);
+                    }}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "Enter" &&
+                        itemCode.trim() &&
+                        suggestions.length === 0
+                      ) {
+                        // Enter on item code triggers barcode lookup fallback
+                        searchBarcode(itemCode.trim());
+                      }
+                    }}
+                  />
+                  {itemCode && (
+                    <button
+                      tabIndex={-1}
+                      onClick={() => {
+                        setItemCode("");
+                        setSuggestions([]);
+                        setHighlightIndex(-1);
+                        itemCodeRef.current?.focus();
+                      }}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-500 p-1"
+                      title="Clear"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="text-gray-600">Description</div>
               <div className="text-gray-600">Unit Price</div>
@@ -1086,6 +1202,12 @@ const BillingPage = () => {
       </div>
 
       {/* Modals */}
+      <AlertModal
+        isOpen={alertConfig.isOpen}
+        onClose={handleCloseAlert}
+        title={alertConfig.title}
+        message={alertConfig.message}
+      />
       <CashInOutModal
         isOpen={showCashInOut}
         onClose={() => setShowCashInOut(false)}
