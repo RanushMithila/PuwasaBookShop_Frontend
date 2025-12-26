@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
@@ -8,12 +8,12 @@ export default defineConfig({
     host: true, // Allow external connections
     strictPort: true, // Exit if port is already in use
     proxy: {
-      '/api': {
-        target: 'http://74.235.227.158',
+      "/api": {
+        target: "http://172.191.203.238",
         changeOrigin: true,
         secure: false,
-      }
-    }
+      },
+    },
   },
-  base: './', // Important for Electron
-})
+  base: "./", // Important for Electron
+});
