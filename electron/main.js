@@ -3,9 +3,9 @@ const path = require("path");
 const isDev = process.env.NODE_ENV === "development";
 
 // Handle Squirrel installer events for Windows
-if (require("electron-squirrel-startup")) {
-  app.quit();
-}
+// if (require("electron-squirrel-startup")) {
+//   app.quit();
+// }
 
 // Create the main window
 const createWindow = () => {
@@ -24,7 +24,7 @@ const createWindow = () => {
     mainWindow.loadURL("http://localhost:5173"); // Development server URL
     mainWindow.webContents.openDevTools(); // Open developer tools in development mode
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../frontend/dist/index.html")); // Production build
+    mainWindow.loadFile(path.join(__dirname, "dist-frontend/index.html")); // Production build
   }
 };
 
