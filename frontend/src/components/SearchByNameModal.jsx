@@ -107,8 +107,8 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
         <input
           type="text"
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="border px-3 py-2 w-full text-base rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-4"
+          onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
+          className="border px-3 py-2 w-full text-base rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-4 uppercase"
           placeholder="Type to search..."
           autoFocus
         />
@@ -121,7 +121,7 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
               {results.map((item, idx) => (
                 <div
                   key={item.inventoryID}
-                  className={`p-3 rounded-xl ${
+                  className={`p-3 rounded-xl uppercase ${
                     highlightIndex === idx ? "bg-blue-100" : ""
                   }`}
                 >

@@ -924,7 +924,7 @@ const BillingPage = () => {
                         setTimeout(() => cashInputRef.current?.focus(), 0);
                         return;
                       }
-                      setItemCode(val);
+                      setItemCode(val.toUpperCase());
                     }}
                     onKeyDown={(e) => {
                       if (
@@ -981,7 +981,7 @@ const BillingPage = () => {
                   <div
                     key={s.inventoryID}
                     onClick={() => selectSuggestedItem(s)}
-                    className={`p-2 cursor-pointer ${
+                    className={`p-2 cursor-pointer uppercase ${
                       idx === highlightIndex ? "bg-blue-100" : ""
                     }`}
                   >
@@ -1241,7 +1241,14 @@ const BillingPage = () => {
       />
       <SearchByNameModal
         isOpen={showSearchByNameModal}
-        onClose={() => setShowSearchByNameModal(false)}
+        onClose={() => {
+          setShowSearchByNameModal(false);
+          // Wait for modal transition/state update, then focus item code
+          setTimeout(() => {
+            itemCodeRef.current?.focus();
+            itemCodeRef.current?.select?.();
+          }, 50);
+        }}
         onSelectItem={selectSuggestedItem}
       />
 
