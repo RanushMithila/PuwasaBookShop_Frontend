@@ -1,27 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import useItemStore from '../store/ItemStore';
+import React, { useState, useEffect, useMemo } from "react";
+import useItemStore from "../store/ItemStore";
+import useCategoryStore from "../store/CategoryStore";
+import Toast from "../components/Toast";
+import ConfirmModal from "../components/ConfirmModal";
 
 const ItemManagementPage = () => {
-  const [formMode, setFormMode] = useState('add'); // 'add', 'edit', 'search'
-  const [formData, setFormData] = useState({
-    itemName: '',
-    itemDescription: '',
-    itemUnitPrice: '',
-    itemCostPrice: '',
-    itemCategory: '',
-    itemImage: '',
-    barcode: '',
-    inventoryID: '',
-    locationID: '1', // Default location
-    quantity: '',
-    suplierID: ''
-  });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedLocationId, setSelectedLocationId] = useState('1');
-  const [currentStock, setCurrentStock] = useState(null);
-  const [stockLoading, setStockLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-
   const {
     currentItem,
     searchResults,
@@ -37,135 +20,147 @@ const ItemManagementPage = () => {
     clearMessages,
     setCurrentItem,
     clearCurrentItem,
-    clearSearchResults
+    clearSearchResults,
   } = useItemStore();
 
-  // Clear messages on component mount
-  useEffect(() => {
-    clearMessages();
-  }, [clearMessages]);
+  const { categories, loadCategories } = useCategoryStore();
 
-  // Fetch current stock when item is selected for editing
+  // UI State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedLocationId, setSelectedLocationId] = useState("1");
+  const [showModal, setShowModal] = useState(false);
+  const [modalMode, setModalMode] = useState("add"); // 'add' or 'edit'
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [currentStock, setCurrentStock] = useState(null);
+
+  // Form State
+  const [formData, setFormData] = useState({
+    itemName: "",
+    itemDescription: "",
+    itemUnitPrice: "",
+    itemCostPrice: "",
+    itemCategory: "",
+    itemImage: "",
+    barcode: "",
+    inventoryID: "",
+    locationID: "1",
+    quantity: "",
+    suplierID: "1",
+  });
+
+  // Load categories on mount
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
+
+  // Handle Notifications
+  useEffect(() => {
+    if (successMessage) {
+      setToast({ message: successMessage, type: "success" });
+      clearMessages();
+    }
+    if (error) {
+      setToast({ message: error, type: "error" });
+      clearMessages();
+    }
+  }, [successMessage, error, clearMessages]);
+
+  const handleSearch = async () => {
+    if (!searchTerm.trim()) return;
+    await searchItems(searchTerm, parseInt(selectedLocationId));
+  };
+
   const fetchCurrentStock = async (barcode, locationId) => {
     if (!barcode || !locationId) return;
-    
     setStockLoading(true);
-    setCurrentStock(null);
-    
     try {
-      console.log('Fetching current stock for:', { barcode, locationId });
       const result = await getItemQuantity(barcode, locationId);
-      
       if (result.success && result.data) {
-        console.log('Current stock result:', result.data);
         setCurrentStock(result.data);
       } else {
-        console.log('No stock data found:', result.error);
         setCurrentStock(null);
       }
-    } catch (error) {
-      console.error('Error fetching stock:', error);
+    } catch (err) {
       setCurrentStock(null);
     } finally {
       setStockLoading(false);
     }
   };
 
-  // Update form data when current item changes
-  useEffect(() => {
-    console.log('Effect triggered:', { currentItem, formMode });
-    if (currentItem && (formMode === 'edit' || formMode === 'search')) {
-      console.log('Setting form data from current item:', currentItem);
+  const handleOpenModal = (mode, item = null) => {
+    setModalMode(mode);
+    if (mode === "edit" && item) {
+      setCurrentItem(item);
       setFormData({
-        itemName: currentItem.itemName || '',
-        itemDescription: currentItem.itemDescription || '',
-        itemUnitPrice: currentItem.itemUnitPrice || currentItem.UnitPrice || '',
-        itemCostPrice: currentItem.itemCostPrice || currentItem.CostPrice || '',
-        itemCategory: currentItem.itemCategory || currentItem.CategoryID || '',
-        itemImage: currentItem.itemImage || '',
-        barcode: currentItem.barcode || '',
-        inventoryID: currentItem.inventoryID || currentItem.InventoryID || '',
-        locationID: currentItem.locationID || currentItem.LocationID || '1',
-        quantity: '', // Quantity is separate from item data
-        suplierID: Array.isArray(currentItem.suplierID) ? currentItem.suplierID[0] : currentItem.suplierID || ''
+        itemName: item.itemName || "",
+        itemDescription: item.itemDescription || "",
+        itemUnitPrice: item.itemUnitPrice || item.UnitPrice || "",
+        itemCostPrice: item.itemCostPrice || item.CostPrice || "",
+        itemCategory: item.itemCategory || item.CategoryID || "",
+        itemImage: item.itemImage || "",
+        barcode: item.barcode || "",
+        inventoryID: item.inventoryID || item.InventoryID || "",
+        locationID: item.locationID || item.LocationID || "1",
+        quantity: "",
+        suplierID: Array.isArray(item.suplierID)
+          ? item.suplierID[0]
+          : item.suplierID || "1",
       });
-      
-      // Fetch current stock for this item
-      if (currentItem.barcode && selectedLocationId) {
-        fetchCurrentStock(currentItem.barcode, selectedLocationId);
-      }
-    } else if (formMode === 'add') {
-      console.log('Clearing form data for add mode');
+      fetchCurrentStock(item.barcode, selectedLocationId);
+    } else {
+      clearCurrentItem();
       setFormData({
-        itemName: '',
-        itemDescription: '',
-        itemUnitPrice: '',
-        itemCostPrice: '',
-        itemCategory: '',
-        itemImage: '',
-        barcode: '',
-        inventoryID: '',
-        locationID: '1',
-        quantity: '',
-        suplierID: ''
+        itemName: "",
+        itemDescription: "",
+        itemUnitPrice: "",
+        itemCostPrice: "",
+        itemCategory: "",
+        itemImage: "",
+        barcode: "",
+        inventoryID: "",
+        locationID: selectedLocationId,
+        quantity: "",
+        suplierID: "1",
       });
       setCurrentStock(null);
     }
-  }, [currentItem, formMode, selectedLocationId]);
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    clearCurrentItem();
+    setCurrentStock(null);
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    console.log('Input change:', { name, value, formMode });
-    setFormData(prev => {
-      const newData = {
-        ...prev,
-        [name]: value
-      };
-      console.log('New form data:', newData);
-      return newData;
-    });
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    clearMessages();
-
-    if (!formData.itemName.trim() || !formData.barcode.trim()) {
-      set({ error: 'Item name and barcode are required' });
-      return;
-    }
-
-    // Convert string numbers to actual numbers for API
     const apiData = {
       ...formData,
       itemUnitPrice: parseFloat(formData.itemUnitPrice) || 0,
       itemCostPrice: parseFloat(formData.itemCostPrice) || 0,
       itemCategory: parseInt(formData.itemCategory) || 1,
-      inventoryID: parseInt(formData.inventoryID) || 1,
+      inventoryID: parseInt(formData.inventoryID) || 0,
       locationID: parseInt(formData.locationID) || 1,
       quantity: parseInt(formData.quantity) || 0,
-      suplierID: parseInt(formData.suplierID) || 1
+      suplierID: parseInt(formData.suplierID) || 1,
     };
 
-    if (formMode === 'add') {
+    if (modalMode === "add") {
       const result = await addItem(apiData);
       if (result.success) {
-        setFormData({
-          itemName: '',
-          itemDescription: '',
-          itemUnitPrice: '',
-          itemCostPrice: '',
-          itemCategory: '',
-          itemImage: '',
-          barcode: '',
-          inventoryID: '',
-          locationID: '1',
-          quantity: '',
-          suplierID: ''
-        });
+        handleCloseModal();
+        handleSearch();
       }
-    } else if (formMode === 'edit' && currentItem) {
-      // For update, we need different structure
+    } else {
       const updateData = {
         itemName: formData.itemName,
         itemDescription: formData.itemDescription,
@@ -175,512 +170,505 @@ const ItemManagementPage = () => {
         itemImage: formData.itemImage,
         barcode: formData.barcode,
         suplierID: parseInt(formData.suplierID) || 1,
-        createdDateTime: new Date().toISOString(),
-        updatedDateTime: new Date().toISOString(),
-        updatedUser: 1
+        updatedUser: 1,
       };
-
-      const result = await updateItem(currentItem.inventoryID || currentItem.InventoryID, updateData);
+      const result = await updateItem(formData.inventoryID, updateData);
       if (result.success) {
-        setFormMode('search');
-      }
-    }
-  };
-
-  const handleSearch = async () => {
-    if (!searchTerm.trim()) return;
-    
-    clearMessages();
-    setHasSearched(true);
-    console.log('Searching for:', searchTerm, 'in location:', selectedLocationId);
-    
-    const result = await searchItems(searchTerm, parseInt(selectedLocationId));
-    if (result.success && result.data.length > 0) {
-      setFormMode('edit');
-      setCurrentItem(result.data[0]); // Set first result as current
-    } else {
-      // Handle both failure cases and successful searches with no results
-      console.log('Search completed but no items found or error occurred:', result);
-      // The error state is already set by the store, so we don't need to manually set it here
-      // Just ensure we're not in edit mode if no results
-      if (result.success && result.data.length === 0) {
-        // This was a successful search but with no results
-        console.log('Successful search with no results');
+        handleCloseModal();
+        handleSearch();
       }
     }
   };
 
   const handleStockUpdate = async () => {
     if (!currentItem || !formData.quantity) return;
-    
     const result = await updateStockLevel(
       currentItem.inventoryID || currentItem.InventoryID,
       parseInt(selectedLocationId),
       parseInt(formData.quantity)
     );
-    
     if (result.success) {
-      setFormData(prev => ({ ...prev, quantity: '' }));
-      // Refresh current stock after successful update
-      if (currentItem.barcode && selectedLocationId) {
-        fetchCurrentStock(currentItem.barcode, selectedLocationId);
-      }
+      setFormData((prev) => ({ ...prev, quantity: "" }));
+      fetchCurrentStock(currentItem.barcode, selectedLocationId);
     }
   };
 
-  const handleDelete = async () => {
-    if (!currentItem) return;
-    
-    if (window.confirm(`Are you sure you want to delete item "${currentItem.itemName}"?`)) {
-      const result = await deleteItem(currentItem.inventoryID || currentItem.InventoryID);
+  const handleDeleteClick = (item) => {
+    setItemToDelete(item);
+    setShowConfirmDelete(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (itemToDelete) {
+      const result = await deleteItem(
+        itemToDelete.inventoryID || itemToDelete.InventoryID
+      );
       if (result.success) {
-        clearCurrentItem();
-        clearSearchResults();
-        setFormMode('add');
-        setSearchTerm('');
+        handleSearch();
       }
+      setItemToDelete(null);
+      setShowConfirmDelete(false);
     }
-  };
-
-  const handleNewItem = () => {
-    clearCurrentItem();
-    clearSearchResults();
-    setFormData({
-      itemName: '',
-      itemDescription: '',
-      itemUnitPrice: '',
-      itemCostPrice: '',
-      itemCategory: '',
-      itemImage: '',
-      barcode: '',
-      inventoryID: '',
-      locationID: '1',
-      quantity: '',
-      suplierID: ''
-    });
-    setFormMode('add');
-    setSearchTerm('');
-    setCurrentStock(null);
-    setHasSearched(false);
-    clearMessages();
   };
 
   return (
-    <div className="p-6">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Item Management</h1>
-
-        {/* Messages */}
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
+    <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
+              Item Management
+            </h1>
+            <p className="text-gray-500 mt-2 font-medium">
+              Manage your inventory items and stock levels
+            </p>
           </div>
-        )}
-        {successMessage && (
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-            {successMessage}
+          <button
+            onClick={() => handleOpenModal("add")}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:shadow-emerald-200 flex items-center gap-2"
+          >
+            <span>+</span> Add New Item
+          </button>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="mb-6 flex flex-col md:flex-row gap-4 items-end">
+          <div className="w-full md:w-32">
+            <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">
+              Location ID
+            </label>
+            <input
+              type="number"
+              value={selectedLocationId}
+              onChange={(e) => setSelectedLocationId(e.target.value)}
+              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm transition-all font-bold"
+              placeholder="Loc ID"
+              min="1"
+            />
           </div>
-        )}
+          <div className="relative flex-1">
+            <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">
+              Search By Barcode or Name
+            </label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                🔍
+              </span>
+              <input
+                type="text"
+                placeholder="Type barcode or item name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleSearch()}
+                className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm transition-all"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleSearch}
+            disabled={loading || !searchTerm.trim()}
+            className="px-8 py-3 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-600 font-bold transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            <span>
+              {loading ? (
+                <span className="w-5 h-5 border-2 border-gray-300 border-t-emerald-500 rounded-full animate-spin"></span>
+              ) : (
+                "🔍"
+              )}
+            </span>
+            <span>Search</span>
+          </button>
+        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Search */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-lg font-semibold mb-4">Search Items</h2>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Location ID</label>
-                <input
-                  type="number"
-                  value={selectedLocationId}
-                  onChange={(e) => setSelectedLocationId(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Location ID"
-                  min="1"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Search (Barcode/Name)</label>
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value);
-                      setHasSearched(false); // Reset search state when term changes
-                    }}
-                    className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter barcode or item name"
-                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                  />
-                  <button
-                    onClick={handleSearch}
-                    disabled={loading || !searchTerm.trim()}
-                    className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-400"
+        {/* Items Table */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[400px]">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50/50 border-b border-gray-100">
+                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                  Item Details
+                </th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                  Pricing
+                </th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                  Category
+                </th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {loading && searchResults.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan="4"
+                    className="px-6 py-12 text-center text-gray-400"
                   >
-                    {loading ? 'Loading...' : 'Search'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Search Results */}
-              {searchResults.length > 0 && (
-                <div className="mt-4">
-                  <h3 className="text-sm font-medium mb-2">Search Results ({searchResults.length})</h3>
-                  <div className="max-h-40 overflow-y-auto space-y-2">
-                    {searchResults.map((item, index) => (
-                      <div
-                        key={index}
-                        onClick={() => {
-                          setCurrentItem(item);
-                          setFormMode('edit');
-                        }}
-                        className="p-2 border rounded cursor-pointer hover:bg-gray-50"
-                      >
-                        <div className="text-sm font-medium">{item.itemName}</div>
-                        <div className="text-xs text-gray-500">
-                          {item.barcode} | Rs: {item.itemUnitPrice || item.UnitPrice}
+                    <div className="flex justify-center items-center gap-3">
+                      <span className="w-6 h-6 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></span>
+                      Searching for items...
+                    </div>
+                  </td>
+                </tr>
+              ) : searchResults.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan="4"
+                    className="px-6 py-16 text-center text-gray-400 italic"
+                  >
+                    {searchTerm
+                      ? "No items found for your search."
+                      : "Enter a search term to find items."}
+                  </td>
+                </tr>
+              ) : (
+                searchResults.map((item) => (
+                  <tr
+                    key={item.inventoryID || item.InventoryID}
+                    className="hover:bg-gray-50/50 transition-colors group"
+                  >
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center text-xl">
+                          📦
+                        </div>
+                        <div>
+                          <div className="font-bold text-gray-900 uppercase">
+                            {item.itemName}
+                          </div>
+                          <div className="text-xs text-gray-500 font-mono">
+                            ID:{" "}
+                            <span className="text-emerald-600 font-bold">
+                              #{item.inventoryID || item.InventoryID}
+                            </span>{" "}
+                            | {item.barcode}
+                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm font-bold text-gray-900">
+                        Rs.{" "}
+                        {parseFloat(
+                          item.itemUnitPrice || item.UnitPrice || 0
+                        ).toFixed(2)}
+                      </div>
+                      <div className="text-xs text-gray-400 italic">
+                        Cost: Rs.{" "}
+                        {parseFloat(
+                          item.itemCostPrice || item.CostPrice || 0
+                        ).toFixed(2)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-600">
+                      <span className="px-3 py-1 bg-gray-100 rounded-full text-xs font-bold">
+                        Cat: {item.itemCategory || item.CategoryID || "N/A"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right text-xs">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => handleOpenModal("edit", item)}
+                          className="px-3 py-1.5 bg-blue-500 text-white hover:bg-blue-600 rounded-lg transition-all shadow-sm font-bold uppercase tracking-wider"
+                          title="Edit"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClick(item)}
+                          className="px-3 py-1.5 bg-red-500 text-white hover:bg-red-600 rounded-lg transition-all shadow-sm font-bold uppercase tracking-wider"
+                          title="Delete"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
+            </tbody>
+          </table>
+        </div>
 
-              {/* No Items Found Message */}
-              {!loading && hasSearched && searchTerm.trim() && searchResults.length === 0 && (
-                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                  <div className="flex items-center">
-                    <div className="text-yellow-600 mr-2">🔍</div>
-                    <div>
-                      <p className="text-sm text-yellow-800">
-                        No items found for "{searchTerm}"
-                      </p>
-                      <p className="text-xs text-yellow-700 mt-1">
-                        Try a different barcode, item name, or check the location ID. You can also add a new item.
-                      </p>
-                      {error && (
-                        <p className="text-xs text-red-600 mt-1 font-medium">
-                          {error}
-                        </p>
-                      )}
+        {/* Item Modal */}
+        {showModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={handleCloseModal}
+            ></div>
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl relative z-10 overflow-hidden animate-zoom-in max-h-[90vh] flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center shrink-0">
+                <h2 className="text-xl font-extrabold text-gray-900 uppercase">
+                  {modalMode === "add" ? "Add New Item" : "Edit Item"}
+                </h2>
+                <button
+                  onClick={handleCloseModal}
+                  className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="overflow-y-auto flex-1 p-6">
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  {/* Basic Information Section */}
+                  <div className="bg-gray-50 p-6 rounded-2xl space-y-4">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                      Basic Information
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">
+                          Item Name
+                        </label>
+                        <input
+                          type="text"
+                          name="itemName"
+                          value={formData.itemName}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold uppercase transition-all"
+                          placeholder="EX: PENDRIVE"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">
+                          Barcode
+                        </label>
+                        <input
+                          type="text"
+                          name="barcode"
+                          value={formData.barcode}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold transition-all"
+                          placeholder="EX: 12345678"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">
+                        Description
+                      </label>
+                      <textarea
+                        name="itemDescription"
+                        value={formData.itemDescription}
+                        onChange={handleInputChange}
+                        rows="2"
+                        className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-medium uppercase transition-all"
+                        placeholder="ITEM DESCRIPTION"
+                      />
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          </div>
 
-          {/* Middle Column - Item Form */}
-          <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold">
-                {formMode === 'add' ? 'Add Item' : 
-                 formMode === 'edit' ? 'Edit Item' : 'Item Details'}
-              </h2>
-              <button
-                onClick={handleNewItem}
-                className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
-              >
-                New Item
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Item Name *</label>
-                  <input
-                    type="text"
-                    name="itemName"
-                    value={formData.itemName}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter item name"
-                    required
-                    disabled={loading}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Barcode *</label>
-                  <input
-                    type="text"
-                    name="barcode"
-                    value={formData.barcode}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter barcode"
-                    required
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
-                <textarea
-                  name="itemDescription"
-                  value={formData.itemDescription}
-                  onChange={handleInputChange}
-                  rows="2"
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter item description"
-                  disabled={loading}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Unit Price</label>
-                  <input
-                    type="number"
-                    name="itemUnitPrice"
-                    value={formData.itemUnitPrice}
-                    onChange={handleInputChange}
-                    step="0.01"
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="0.00"
-                    disabled={loading}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Cost Price</label>
-                  <input
-                    type="number"
-                    name="itemCostPrice"
-                    value={formData.itemCostPrice}
-                    onChange={handleInputChange}
-                    step="0.01"
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="0.00"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Category ID</label>
-                  <input
-                    type="number"
-                    name="itemCategory"
-                    value={formData.itemCategory}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="1"
-                    disabled={loading}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Location ID</label>
-                  <input
-                    type="number"
-                    name="locationID"
-                    value={formData.locationID}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="1"
-                    disabled={loading}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Supplier ID</label>
-                  <input
-                    type="number"
-                    name="suplierID"
-                    value={formData.suplierID}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="1"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-
-              {formMode === 'add' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Initial Quantity</label>
-                    <input
-                      type="number"
-                      name="quantity"
-                      value={formData.quantity}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="0"
-                      disabled={loading}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Inventory ID</label>
-                    <input
-                      type="number"
-                      name="inventoryID"
-                      value={formData.inventoryID}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Auto-generated"
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Image URL</label>
-                <input
-                  type="text"
-                  name="itemImage"
-                  value={formData.itemImage}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter image URL"
-                  disabled={loading}
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Processing...' : 
-                 formMode === 'add' ? 'Add Item' : 'Update Item'}
-              </button>
-            </form>
-
-            {/* Current Stock Display Section */}
-            {currentItem && formMode === 'edit' && (
-              <div className="mt-6 p-4 bg-blue-50 rounded-md border border-blue-200">
-                <h3 className="font-medium mb-3 text-blue-800">📦 Current Stock Information</h3>
-                
-                {stockLoading ? (
-                  <div className="flex items-center space-x-2 text-blue-600">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
-                    <span>Loading current stock...</span>
-                  </div>
-                ) : currentStock ? (
-                  <div className="space-y-2">
-                    {Array.isArray(currentStock) ? (
-                      currentStock.map((stock, index) => (
-                        <div key={index} className="flex justify-between items-center bg-white p-3 rounded border">
-                          <div>
-                            <div className="font-medium text-gray-900">Inventory ID: {stock.inventoryID}</div>
-                            <div className="text-sm text-gray-600">
-                              Barcode: {currentItem.barcode} | Location: {selectedLocationId}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-green-600">
-                              {stock.quantity || 0}
-                            </div>
-                            <div className="text-xs text-gray-500">units in stock</div>
-                          </div>
+                  {/* Pricing and Category Section */}
+                  <div className="bg-gray-50 p-6 rounded-2xl space-y-4">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                      Pricing & Category
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">
+                          Unit Price
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">
+                            Rs.
+                          </span>
+                          <input
+                            type="number"
+                            name="itemUnitPrice"
+                            value={formData.itemUnitPrice}
+                            onChange={handleInputChange}
+                            step="0.01"
+                            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold transition-all"
+                            placeholder="0.00"
+                          />
                         </div>
-                      ))
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">
+                          Cost Price
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">
+                            Rs.
+                          </span>
+                          <input
+                            type="number"
+                            name="itemCostPrice"
+                            value={formData.itemCostPrice}
+                            onChange={handleInputChange}
+                            step="0.01"
+                            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold transition-all"
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">
+                          Category
+                        </label>
+                        <select
+                          name="itemCategory"
+                          value={formData.itemCategory}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold transition-all"
+                          required
+                        >
+                          <option value="">Select Category</option>
+                          {categories.map((cat) => (
+                            <option key={cat.CategoryID} value={cat.CategoryID}>
+                              {cat.CategoryName.toUpperCase()}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stock Management Section (Only in Edit or Initial State in Add) */}
+                  <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 space-y-4">
+                    <h3 className="text-xs font-bold text-blue-400 uppercase tracking-widest">
+                      Stock Information
+                    </h3>
+
+                    {modalMode === "add" ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-blue-500 uppercase ml-1">
+                            Initial Quantity
+                          </label>
+                          <input
+                            type="number"
+                            name="quantity"
+                            value={formData.quantity}
+                            onChange={handleInputChange}
+                            className="w-full px-4 py-2 border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold transition-all bg-white"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-blue-500 uppercase ml-1">
+                            Location ID
+                          </label>
+                          <input
+                            type="number"
+                            name="locationID"
+                            value={formData.locationID}
+                            onChange={handleInputChange}
+                            className="w-full px-4 py-2 border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold transition-all bg-white"
+                            placeholder="1"
+                          />
+                        </div>
+                      </div>
                     ) : (
-                      <div className="flex justify-between items-center bg-white p-3 rounded border">
-                        <div>
-                          <div className="font-medium text-gray-900">Inventory ID: {currentStock.inventoryID}</div>
-                          <div className="text-sm text-gray-600">
-                            Barcode: {currentItem.barcode} | Location: {selectedLocationId}
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-blue-100">
+                          <div>
+                            <div className="text-[10px] font-extrabold text-blue-500 uppercase">
+                              Current Stock Level
+                            </div>
+                            <div className="text-3xl font-black text-gray-900">
+                              {stockLoading
+                                ? "..."
+                                : currentStock?.quantity || "0"}
+                            </div>
                           </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              fetchCurrentStock(
+                                formData.barcode,
+                                selectedLocationId
+                              )
+                            }
+                            className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all font-bold text-xs"
+                          >
+                            REFRESH
+                          </button>
                         </div>
-                        <div className="text-right">
-                          <div className="text-2xl font-bold text-green-600">
-                            {currentStock.quantity || 0}
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 block mb-1">
+                              Set New Quantity
+                            </label>
+                            <input
+                              type="number"
+                              name="quantity"
+                              value={formData.quantity}
+                              onChange={handleInputChange}
+                              className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold transition-all bg-white"
+                              placeholder="Type new Qty"
+                            />
                           </div>
-                          <div className="text-xs text-gray-500">units in stock</div>
+                          <div className="flex items-end">
+                            <button
+                              type="button"
+                              onClick={handleStockUpdate}
+                              disabled={loading || !formData.quantity}
+                              className="px-6 py-2 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-all disabled:opacity-50"
+                            >
+                              Update Qty
+                            </button>
+                          </div>
                         </div>
                       </div>
                     )}
-                    
-                    <button
-                      onClick={() => fetchCurrentStock(currentItem.barcode, selectedLocationId)}
-                      disabled={stockLoading}
-                      className="w-full mt-2 px-3 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:bg-gray-400"
-                    >
-                      🔄 Refresh Stock
-                    </button>
                   </div>
-                ) : (
-                  <div className="text-center py-4">
-                    <div className="text-gray-500 mb-2">No stock information available</div>
-                    <button
-                      onClick={() => fetchCurrentStock(currentItem.barcode, selectedLocationId)}
-                      disabled={stockLoading || !currentItem.barcode}
-                      className="px-4 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:bg-gray-400"
-                    >
-                      📊 Check Stock
-                    </button>
+
+                  <div className="flex gap-3 pt-4 border-t border-gray-100 italic font-medium text-xs text-gray-400">
+                    * Ensure barcode is unique to avoid duplication.
                   </div>
-                )}
+                </form>
               </div>
-            )}
 
-            {/* Stock Update Section */}
-            {currentItem && formMode === 'edit' && (
-              <div className="mt-6 p-4 bg-gray-50 rounded-md">
-                <h3 className="font-medium mb-2">Stock Management</h3>
-                <div className="flex space-x-2">
-                  <input
-                    type="number"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))}
-                    className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="New quantity"
-                  />
-                  <button
-                    onClick={handleStockUpdate}
-                    disabled={loading || !formData.quantity}
-                    className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:bg-gray-400"
-                  >
-                    Update Stock
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Action buttons when item is loaded */}
-            {currentItem && (
-              <div className="mt-4 flex space-x-2">
+              <div className="p-6 bg-gray-50 flex gap-3 shrink-0">
                 <button
-                  onClick={handleDelete}
+                  type="button"
+                  onClick={handleCloseModal}
+                  className="flex-1 py-3 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-50 transition-all uppercase tracking-wide"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmit}
                   disabled={loading}
-                  className="flex-1 bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 disabled:bg-gray-400"
+                  className="flex-2 px-8 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg flex items-center justify-center gap-2 uppercase tracking-wide disabled:opacity-50"
                 >
-                  {loading ? 'Deleting...' : '🗑️ Delete'}
-                </button>
-                <button
-                  onClick={handleNewItem}
-                  className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600"
-                >
-                  Clear & New
+                  {loading && (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  )}
+                  {modalMode === "add" ? "Create Item" : "Save Changes"}
                 </button>
               </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Debug Section */}
-        <div className="mt-8 bg-white p-4 rounded-lg shadow">
-          <h3 className="text-sm font-medium mb-2">Debug Information</h3>
-          <div className="text-xs text-gray-600 space-y-1">
-            <p>Mode: {formMode}</p>
-            <p>Loading: {loading ? 'Yes' : 'No'}</p>
-            <p>Stock Loading: {stockLoading ? 'Yes' : 'No'}</p>
-            <p>Current Item: {currentItem ? `${currentItem.itemName} (ID: ${currentItem.inventoryID || currentItem.InventoryID})` : 'None'}</p>
-            <p>Search Results: {searchResults.length} items</p>
-            <p>Selected Location: {selectedLocationId}</p>
-            <p>Current Stock: {currentStock ? (Array.isArray(currentStock) ? `${currentStock.length} entries, total: ${currentStock.reduce((sum, item) => sum + (item.quantity || 0), 0)} units` : `${currentStock.quantity || 0} units`) : 'None'}</p>
-          </div>
-        </div>
+        {/* Delete Confirmation */}
+        <ConfirmModal
+          isOpen={showConfirmDelete}
+          onClose={() => setShowConfirmDelete(false)}
+          onConfirm={handleConfirmDelete}
+          title="Delete Item"
+          message={`Are you sure you want to delete "${itemToDelete?.itemName}"? This action will permanently remove it from the inventory.`}
+          confirmText="Yes, Delete"
+          type="danger"
+        />
+
+        {/* Toast Notifs */}
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
       </div>
     </div>
   );
