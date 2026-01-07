@@ -7,7 +7,8 @@ import Receipt from "../components/Receipt";
 import CashInOutModal from "../components/CashInOutModal";
 import CashCountModal from "../components/CashCountModal";
 import TemporaryBillsModal from "../components/TemporaryBillsModal";
-import SearchByNameModal from "../components/SearchByNameModal"; // Import the new modal
+import SearchByNameModal from "../components/SearchByNameModal";
+import OpeningAmountModal from "../components/OpeningAmountModal";
 import useAuthStore from "../store/AuthStore";
 import TokenService from "../services/TokenService";
 import {
@@ -21,6 +22,10 @@ import {
   getTemporaryBills,
 } from "../services/BillingService";
 import { getInventory } from "../services/InventoryService";
+import {
+  checkRegisterOpen,
+  setOpeningAmount,
+} from "../services/CashRegisterService";
 
 import AlertModal from "../components/AlertModal";
 
@@ -33,14 +38,18 @@ const BillingPage = () => {
   const resetTransaction = useBillingStore((s) => s.resetTransaction);
   const currentBillId = useBillingStore((s) => s.currentBillId);
 
-  // Auth store (tokens)
+  // Auth store (tokens and device ID)
   const accessToken = useAuthStore((s) => s.accessToken);
+  const deviceId = useAuthStore((s) => s.deviceId);
 
   // UI state
   const [showCashInOut, setShowCashInOut] = useState(false);
   const [showCashCount, setShowCashCount] = useState(false);
   const [showTemporaryBills, setShowTemporaryBills] = useState(false);
-  const [showSearchByNameModal, setShowSearchByNameModal] = useState(false); // State for the new modal
+  const [showSearchByNameModal, setShowSearchByNameModal] = useState(false);
+  const [showOpeningAmountModal, setShowOpeningAmountModal] = useState(false);
+  const [isOpeningAmountLoading, setIsOpeningAmountLoading] = useState(false);
+  const [registerSessionId, setRegisterSessionId] = useState(null);
   const [temporaryBills, setTemporaryBills] = useState([]);
   const [loadingTempBills, setLoadingTempBills] = useState(false);
   const [tempBillsError, setTempBillsError] = useState("");
@@ -66,6 +75,7 @@ const BillingPage = () => {
   const [cashPayAmount, setCashPayAmount] = useState("0.00");
   const [cardAmount, setCardAmount] = useState("0.00");
   const [creditBalance, setCreditBalance] = useState(0);
+  const [lastBillBalance, setLastBillBalance] = useState(0); // Persistent last bill balance
   const [userEditedCash, setUserEditedCash] = useState(false);
   const [userEditedCard, setUserEditedCard] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false); // API actions (save/complete)
@@ -149,6 +159,80 @@ const BillingPage = () => {
     const t = setTimeout(() => itemCodeRef.current?.focus(), 0);
     return () => clearTimeout(t);
   }, []);
+
+  // Check if cash register is open on mount
+  useEffect(() => {
+    const checkOpenStatus = async () => {
+      if (!deviceId) {
+        console.log("No device ID available, skipping register open check");
+        return;
+      }
+
+      try {
+        console.log("Checking if cash register is open for device:", deviceId);
+        const response = await checkRegisterOpen(deviceId);
+        console.log("Cash register open status response:", response);
+
+        if (response.status === true && response.data) {
+          if (response.data.isOpen === false) {
+            console.log(
+              "Cash register is closed, showing opening amount modal"
+            );
+            setShowOpeningAmountModal(true);
+          } else {
+            console.log("Cash register is already open");
+            setShowOpeningAmountModal(false);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to check register open status:", error);
+        // Show modal on error to be safe
+        setShowOpeningAmountModal(true);
+      }
+    };
+
+    checkOpenStatus();
+  }, [deviceId]);
+
+  // Handle opening amount submission
+  const handleOpeningAmountSubmit = async (amount) => {
+    if (!deviceId) {
+      console.error("No device ID available");
+      return;
+    }
+
+    setIsOpeningAmountLoading(true);
+    try {
+      console.log("Setting opening amount:", amount, "for device:", deviceId);
+      const response = await setOpeningAmount(deviceId, amount);
+      console.log("Set opening amount response:", response);
+
+      if (response.status === true) {
+        console.log(
+          "Opening amount set successfully, SessionID:",
+          response.data?.SessionID
+        );
+        setRegisterSessionId(response.data?.SessionID);
+        setShowOpeningAmountModal(false);
+        // Focus item code after modal closes
+        setTimeout(() => itemCodeRef.current?.focus(), 100);
+      } else {
+        console.error(
+          "Failed to set opening amount:",
+          response.error_message || response.message
+        );
+        alert(
+          "Failed to set opening amount: " +
+            (response.error_message || response.message)
+        );
+      }
+    } catch (error) {
+      console.error("Set opening amount failed:", error);
+      alert("Error setting opening amount: " + error.message);
+    } finally {
+      setIsOpeningAmountLoading(false);
+    }
+  };
 
   // Item code search with keyboard navigation
   useEffect(() => {
@@ -329,6 +413,7 @@ const BillingPage = () => {
           LocationID: 1,
           CustomerID: 1,
           CashierID: 1,
+          RegisterID: deviceId,
         });
         if (!(createResp && createResp.status === true && createResp.data)) {
           alert("Failed to create bill");
@@ -430,7 +515,9 @@ const BillingPage = () => {
       // The user wants to see the details. Clearing happens on Print or Clear button.
       if (completeResp && completeResp.status === true) {
         // Keep creditBalance as returned by the server so operator sees the change
-        setCreditBalance(completeResp.data || 0);
+        const balance = completeResp.data || 0;
+        setCreditBalance(balance);
+        setLastBillBalance(balance); // Store in persistent state
 
         // Update last_bill.json again with the returned balance
         try {
@@ -479,6 +566,24 @@ const BillingPage = () => {
         } catch (ufErr) {
           console.warn("Final last_bill write failed:", ufErr);
         }
+
+        // On success, clear the entire transaction and UI fields for the next customer
+        // but keep the balance and last bill balance visible.
+        resetTransaction();
+        setCurrentBillId(null);
+        setItemCode("");
+        setCustomerName("Customer");
+        setCustomerPhone("");
+        setCashPayAmount("0.00");
+        setCardAmount("0.00");
+        setUserEditedCash(false);
+        setUserEditedCard(false);
+
+        // Focus item code for next transaction
+        setTimeout(() => {
+          itemCodeRef.current?.focus();
+          itemCodeRef.current?.select?.();
+        }, 100);
       }
     } catch (err) {
       console.error("Add details failed:", err);
@@ -504,6 +609,7 @@ const BillingPage = () => {
         LocationID: 1,
         CustomerID: 1,
         CashierID: 1,
+        RegisterID: deviceId,
       });
       if (!(createResp && createResp.status === true && createResp.data)) {
         alert("Failed to create temporary bill");
@@ -1127,7 +1233,9 @@ const BillingPage = () => {
             <div className="text-sm font-semibold text-gray-700">
               Last Bill Balance
             </div>
-            <div className="text-2xl font-bold text-gray-800">00.00</div>
+            <div className="text-2xl font-bold text-gray-800">
+              {Number(lastBillBalance).toFixed(2)}
+            </div>
           </div>
 
           <div className="space-y-1">
@@ -1250,6 +1358,11 @@ const BillingPage = () => {
           }, 50);
         }}
         onSelectItem={selectSuggestedItem}
+      />
+      <OpeningAmountModal
+        isOpen={showOpeningAmountModal}
+        onSubmit={handleOpeningAmountSubmit}
+        isLoading={isOpeningAmountLoading}
       />
 
       {/* Hidden printable receipt */}
