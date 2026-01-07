@@ -34,6 +34,7 @@ app.whenReady().then(() => {
   // Register IPC handlers
   require("./ipcHandlers/printHandler"); // Ensure this file exists and handles IPC events
   require("./ipcHandlers/helloHandler");
+  require("./ipcHandlers/machineIdHandler"); // Machine ID handler for device registration
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

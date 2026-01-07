@@ -171,7 +171,7 @@ class HttpClient {
     }
 
     // Redirect
-    window.location.href = "/";
+    window.location.hash = "#/";
   }
 
   // Helper method to get headers

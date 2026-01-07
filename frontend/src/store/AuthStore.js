@@ -10,6 +10,7 @@ const useAuthStore = create(
       isAuthenticated: false,
       accessToken: null, // JWT access token
       refreshToken: null, // JWT refresh token
+      deviceId: null, // Machine ID for cash register
 
       // Actions
       setSession: (sessionData) => {
@@ -34,6 +35,11 @@ const useAuthStore = create(
         set({ accessToken: accessToken || null });
       },
 
+      // Set device ID (machine ID for cash register)
+      setDeviceId: (deviceId) => {
+        set({ deviceId: deviceId || null });
+      },
+
       // Clear session and tokens together - no more manual coordination needed
       clearSession: () => {
         set({
@@ -42,12 +48,14 @@ const useAuthStore = create(
           isAuthenticated: false,
           accessToken: null,
           refreshToken: null,
+          deviceId: null,
         });
       },
 
       // Getter helpers for convenience
       getAccessToken: () => get().accessToken,
       getRefreshToken: () => get().refreshToken,
+      getDeviceId: () => get().deviceId,
     }),
     {
       name: "auth-session-storage", // Unique name for localStorage key

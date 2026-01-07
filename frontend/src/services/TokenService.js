@@ -58,7 +58,7 @@ class TokenService {
     authStore.clearSession();
 
     // Redirect to login page
-    window.location.href = "/login"; // or use your router navigation
+    window.location.hash = "#/login"; // or use your router navigation
   }
 
   /**
