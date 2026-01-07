@@ -1,56 +1,219 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from "react";
+import useAuthStore from "../store/AuthStore";
+import { cashInOut } from "../services/CashRegisterService";
 
-const CashInOutModal = ({ isOpen, onClose, type }) => {
-  const [amount, setAmount] = useState('');
-  const [reason, setReason] = useState('');
+const CashInOutModal = ({ isOpen, onClose }) => {
+  const deviceId = useAuthStore((state) => state.deviceId);
+  const [transactionType, setTransactionType] = useState("in"); // 'in' or 'out'
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = () => {
-    if (!amount || !reason) {
-      alert('Please fill in all fields');
+  // Toast notification state
+  const [toast, setToast] = useState({ show: false, type: "", message: "" });
+
+  // Reset form when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setTransactionType("in");
+      setAmount("");
+      setReason("");
+      setToast({ show: false, type: "", message: "" });
+    }
+  }, [isOpen]);
+
+  // Auto-hide toast after 3 seconds
+  useEffect(() => {
+    if (toast.show) {
+      const timer = setTimeout(() => {
+        setToast({ show: false, type: "", message: "" });
+        // If success, close modal after toast
+        if (toast.type === "success") {
+          onClose();
+        }
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show, toast.type, onClose]);
+
+  const showToast = (type, message) => {
+    setToast({ show: true, type, message });
+  };
+
+  const handleSubmit = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      showToast("error", "Please enter a valid amount");
       return;
     }
-    
-    console.log(`${type} transaction:`, { amount: parseFloat(amount), reason });
-    // TODO: Add API call for cash in/out transaction
-    
-    // Clear form and close modal
-    setAmount('');
-    setReason('');
-    onClose();
+    if (!reason.trim()) {
+      showToast("error", "Please enter a reason");
+      return;
+    }
+    if (!deviceId) {
+      console.error("No device ID available for cash in/out");
+      showToast("error", "Device ID not found. Please re-login.");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Type: true for Cash In, false for Cash Out
+      const isIn = transactionType === "in";
+
+      console.log("Submitting cash transaction:", {
+        deviceId,
+        amount: parseFloat(amount),
+        Type: isIn,
+        reason: reason.trim(),
+      });
+
+      const response = await cashInOut(
+        deviceId,
+        parseFloat(amount),
+        isIn,
+        reason.trim()
+      );
+      console.log("cashInOut response:", response);
+
+      if (response.status === true) {
+        console.log(
+          "Cash transaction recorded successfully, TransactionID:",
+          response.data?.TransactionID
+        );
+        // Clear form
+        setAmount("");
+        setReason("");
+        setTransactionType("in");
+        // Show success toast
+        showToast(
+          "success",
+          `${isIn ? "Cash In" : "Cash Out"} recorded successfully!`
+        );
+      } else {
+        console.error(
+          "Failed to record cash transaction:",
+          response.error_message || response.message
+        );
+        showToast(
+          "error",
+          response.error_message ||
+            response.message ||
+            "Failed to record transaction"
+        );
+      }
+    } catch (error) {
+      console.error("Cash in/out failed:", error);
+      showToast("error", error.message || "Error recording transaction");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (!isOpen) return null;
 
+  const isIn = transactionType === "in";
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-lg shadow-xl w-96">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-gray-800">
-            {type === 'in' ? 'Cash In' : 'Cash Out'}
-          </h2>
+      <div className="bg-white p-6 rounded-xl shadow-2xl w-[420px] relative">
+        {/* Toast Notification */}
+        {toast.show && (
+          <div
+            className={`absolute -top-16 left-0 right-0 mx-auto w-[90%] p-4 rounded-lg shadow-lg flex items-center gap-3 animate-fade-in ${
+              toast.type === "success"
+                ? "bg-emerald-500 text-white"
+                : "bg-red-500 text-white"
+            }`}
+            style={{
+              animation: "slideDown 0.3s ease-out",
+            }}
+          >
+            {toast.type === "success" ? (
+              <svg
+                className="w-6 h-6 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="w-6 h-6 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            )}
+            <span className="font-medium">{toast.message}</span>
+          </div>
+        )}
+
+        <div className="flex justify-between items-center mb-5">
+          <h2 className="text-xl font-bold text-gray-800">💵 Cash In / Out</h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+            className="text-gray-400 hover:text-gray-600 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"
+            disabled={isLoading}
           >
             ×
           </button>
         </div>
-        
+
         <div className="space-y-4">
+          {/* Transaction Type Dropdown */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Amount (Rs:)
+              Transaction Type
+            </label>
+            <select
+              value={transactionType}
+              onChange={(e) => setTransactionType(e.target.value)}
+              className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none transition-all ${
+                isIn
+                  ? "border-emerald-300 bg-emerald-50 focus:border-emerald-500"
+                  : "border-red-300 bg-red-50 focus:border-red-500"
+              }`}
+              disabled={isLoading}
+            >
+              <option value="in">💰 Cash In</option>
+              <option value="out">💸 Cash Out</option>
+            </select>
+          </div>
+
+          {/* Amount Input */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Amount (Rs.)
             </label>
             <input
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter amount"
+              className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none transition-all ${
+                isIn ? "focus:border-emerald-500" : "focus:border-red-500"
+              } border-gray-200`}
+              placeholder="0.00"
               step="0.01"
+              min="0"
+              disabled={isLoading}
             />
           </div>
-          
+
+          {/* Reason Input */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Reason
@@ -59,27 +222,77 @@ const CashInOutModal = ({ isOpen, onClose, type }) => {
               type="text"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter reason"
+              className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none transition-all ${
+                isIn ? "focus:border-emerald-500" : "focus:border-red-500"
+              } border-gray-200`}
+              placeholder="Enter reason for transaction"
+              disabled={isLoading}
             />
           </div>
         </div>
-        
-        <div className="flex justify-end space-x-3 mt-6">
+
+        <div className="flex gap-3 mt-6">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+            className="flex-1 px-4 py-3 text-gray-600 border-2 border-gray-200 rounded-lg hover:bg-gray-50 font-medium disabled:opacity-50 transition-colors"
+            disabled={isLoading}
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+            className={`flex-1 px-4 py-3 text-white rounded-lg font-medium flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors ${
+              isIn
+                ? "bg-emerald-600 hover:bg-emerald-700"
+                : "bg-red-600 hover:bg-red-700"
+            }`}
+            disabled={isLoading}
           >
-            Save
+            {isLoading ? (
+              <>
+                <svg
+                  className="animate-spin h-5 w-5 text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Saving...
+              </>
+            ) : (
+              <>
+                {isIn ? "💰" : "💸"} Save {isIn ? "Cash In" : "Cash Out"}
+              </>
+            )}
           </button>
         </div>
       </div>
+
+      {/* CSS for toast animation */}
+      <style>{`
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 };
