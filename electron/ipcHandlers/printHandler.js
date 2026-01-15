@@ -4,7 +4,7 @@ const path = require("path");
 const fs = require("fs");
 
 function runPythonPrint(event, receiptData) {
-  const printingDir = path.join(__dirname, "printing");
+  const printingDir = path.join("D:\\", "printing");
   const outJson = path.join(printingDir, "last_bill.json");
   const outPdf = path.join(printingDir, "last_python_bill.pdf");
   const logoPath = path.join(printingDir, "logo.png");
