@@ -10,17 +10,25 @@
     "dev": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
     "dev:react": "cd ../frontend && npm run dev",
     "dev:electron": "npm run build && cross-env NODE_ENV=development electron .",
-    "build": "echo \"No build step required for main.js. If you use TypeScript, place your build command here.\""
+    "build": "cd ../frontend && npm run build && cd ../electron && electron-builder"
+  },
+  "build": {
+    "appId": "com.puwasa.pos",
+    "productName": "Puwasa POS",
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico"
+    },
+    "buildDependenciesFromSource": false
   },
   "dependencies": {
-    "node-thermal-printer": "^4.5.0",
-    "printer": "^0.4.0",
-    "usb": "^2.15.0"
+    "node-machine-id": "^1.1.12"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "electron": "^29.1.5",
+    "electron-builder": "^26.0.12",
     "electron-squirrel-startup": "^1.0.1"
   }
 }

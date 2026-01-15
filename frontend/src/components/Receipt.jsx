@@ -17,30 +17,35 @@ const Receipt = React.forwardRef(({ items = [], total = 0, discount = 0, netTota
           </tr>
         </thead>
         <tbody>
-          {items.map((item, index) => (
-            <tr key={index}>
-              <td>{item.name || 'N/A'}</td>
-              <td className="text-right">{item.quantity || 0}</td>
-              <td className="text-right">
-                {(item.price && item.quantity ? item.price * item.quantity : 0).toFixed(2)}
-              </td>
-            </tr>
-          ))}
+          {items.map((item, index) => {
+            const qty = item.QTY || item.quantity || 1;
+            const price = item.itemUnitPrice || item.price || 0;
+            const lineSubtotal = price * qty;
+            const lineDiscount = Math.min(item.Discount || 0, lineSubtotal);
+            const lineTotal = lineSubtotal - lineDiscount;
+            return (
+              <tr key={index}>
+                <td>{item.itemName || item.name || 'N/A'}</td>
+                <td className="text-right">{qty}</td>
+                <td className="text-right">Rs: {lineTotal.toFixed(2)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
       <div className="mt-2">
         <div className="flex justify-between">
           <span>Subtotal:</span>
-          <span>{total.toFixed(2)}</span>
+          <span>Rs: {total.toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
           <span>Discount:</span>
-          <span>{discount.toFixed(2)}</span>
+          <span>Rs: {discount.toFixed(2)}</span>
         </div>
         <div className="flex justify-between font-bold border-t border-black pt-1 mt-1">
           <span>Total:</span>
-          <span>{netTotal.toFixed(2)}</span>
+          <span>Rs: {netTotal.toFixed(2)}</span>
         </div>
       </div>
 

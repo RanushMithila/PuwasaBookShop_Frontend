@@ -22,6 +22,10 @@ lib-cov
 coverage
 *.lcov
 
+# Printing artifacts
+electron/ipcHandlers/printing/receipt.pdf
+electron/ipcHandlers/printing/last_bill.json
+printing/*
 # nyc test coverage
 .nyc_output
 
@@ -137,3 +141,7 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Electron build outputs
+electron/dist
+electron/dist-frontend

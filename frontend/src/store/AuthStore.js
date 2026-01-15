@@ -1,13 +1,16 @@
-import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 
 const useAuthStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       // State
-      user: null,      // Will hold { id, name, role }
-      location: null,  // Will hold { id, name }
+      user: null, // Will hold { id, name, role }
+      location: null, // Will hold { id, name }
       isAuthenticated: false,
+      accessToken: null, // JWT access token
+      refreshToken: null, // JWT refresh token
+      deviceId: null, // Machine ID for cash register
 
       // Actions
       setSession: (sessionData) => {
@@ -19,17 +22,43 @@ const useAuthStore = create(
         });
       },
 
+      // Set authentication tokens
+      setTokens: (accessToken, refreshToken) => {
+        set({
+          accessToken: accessToken || null,
+          refreshToken: refreshToken || null,
+        });
+      },
+
+      // Update only the access token (useful for token refresh)
+      updateAccessToken: (accessToken) => {
+        set({ accessToken: accessToken || null });
+      },
+
+      // Set device ID (machine ID for cash register)
+      setDeviceId: (deviceId) => {
+        set({ deviceId: deviceId || null });
+      },
+
+      // Clear session and tokens together - no more manual coordination needed
       clearSession: () => {
         set({
           user: null,
           location: null,
           isAuthenticated: false,
+          accessToken: null,
+          refreshToken: null,
+          deviceId: null,
         });
-        // Note: Clearing the separate TokenStore should be handled alongside this.
       },
+
+      // Getter helpers for convenience
+      getAccessToken: () => get().accessToken,
+      getRefreshToken: () => get().refreshToken,
+      getDeviceId: () => get().deviceId,
     }),
     {
-      name: 'auth-session-storage', // Unique name for localStorage key
+      name: "auth-session-storage", // Unique name for localStorage key
       storage: createJSONStorage(() => localStorage), // Use localStorage for persistence
     }
   )

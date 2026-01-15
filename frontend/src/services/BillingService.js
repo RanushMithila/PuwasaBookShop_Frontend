@@ -8,13 +8,11 @@ import httpClient from './HttpClient';
 export const createBill = async (billingData) => {
     try {
         console.log('Creating bill with data:', billingData);
-        // HttpClient is configured to handle auth, so no need to pass headers manually.
-        const response = await httpClient.post('/billing/billing', billingData);
+        const response = await httpClient.post('/billing/billing', billingData, true);
         console.log('Create bill response:', response);
         return response;
     } catch (error) {
         console.error('Create bill failed:', error);
-        // Propagate the error to be handled by the component.
         throw error;
     }
 };
@@ -27,11 +25,28 @@ export const createBill = async (billingData) => {
 export const addBillDetails = async (detailsData) => {
     try {
         console.log('Adding bill details with data:', detailsData);
-        const response = await httpClient.post('/billing/details', detailsData);
+        const response = await httpClient.post('/billing/details', detailsData, true);
         console.log('Add bill details response:', response);
         return response;
     } catch (error) {
         console.error('Add bill details failed:', error);
+        throw error;
+    }
+};
+
+/**
+ * Gets a bill by ID.
+ * @param {number} billId - The ID of the bill to retrieve.
+ * @returns {Promise<object>} The API response.
+ */
+export const getBill = async (billId) => {
+    try {
+        console.log(`Getting bill ${billId}`);
+        const response = await httpClient.get(`/billing/billing/${billId}`, true);
+        console.log('Get bill response:', response);
+        return response;
+    } catch (error) {
+        console.error('Get bill failed:', error);
         throw error;
     }
 };
@@ -45,11 +60,81 @@ export const addBillDetails = async (detailsData) => {
 export const completeBill = async (billId, paymentData) => {
     try {
         console.log(`Completing bill ${billId} with payment:`, paymentData);
-        const response = await httpClient.post(`/billing/billing/complete/${billId}`, paymentData);
+        const response = await httpClient.post(`/billing/billing/complete/${billId}`, paymentData, true);
         console.log('Complete bill response:', response);
         return response;
     } catch (error) {
         console.error('Complete bill failed:', error);
+        throw error;
+    }
+};
+
+/**
+ * Gets item details by barcode and location.
+ * @param {string} barcode - The barcode of the item.
+ * @param {number} locationId - The location ID.
+ * @returns {Promise<object>} The API response.
+ */
+export const getItemByBarcode = async (barcode, locationId) => {
+    try {
+        console.log(`Getting item by barcode: ${barcode}, location: ${locationId}`);
+        const response = await httpClient.get(`/inventory/getItem/${barcode}/${locationId}`, false);
+        console.log('Get item by barcode response:', response);
+        return response;
+    } catch (error) {
+        console.error('Get item by barcode failed:', error);
+        throw error;
+    }
+};
+
+/**
+ * Gets item quantity by barcode and location.
+ * @param {string} barcode - The barcode of the item.
+ * @param {number} locationId - The location ID.
+ * @returns {Promise<object>} The API response.
+ */
+export const getItemQuantity = async (barcode, locationId) => {
+    try {
+        console.log(`Getting item quantity by barcode: ${barcode}, location: ${locationId}`);
+        const response = await httpClient.get(`/inventory/getItemQTY/${barcode}/${locationId}`, false);
+        console.log('Get item quantity response:', response);
+        return response;
+    } catch (error) {
+        console.error('Get item quantity failed:', error);
+        throw error;
+    }
+};
+
+/**
+ * Cancels a billing (temporary) by ID.
+ * @param {number} billId
+ * @returns {Promise<object>}
+ */
+export const cancelBill = async (billId) => {
+    try {
+        console.log(`Cancelling bill ${billId}`);
+        const response = await httpClient.delete(`/billing/billing/cancel/${billId}`, true);
+        console.log('Cancel bill response:', response);
+        return response;
+    } catch (error) {
+        console.error('Cancel bill failed:', error);
+        throw error;
+    }
+};
+
+/**
+ * Retrieves list of temporary (incomplete) bills for a location.
+ * @param {number} locationId
+ * @returns {Promise<object>} API response containing data: [ { BillID, CustomerID, Total, Discount, createdDateTime } ]
+ */
+export const getTemporaryBills = async (locationId) => {
+    try {
+        console.log(`Getting temporary bills for location ${locationId}`);
+        const response = await httpClient.get(`/billing/tempbills/${locationId}`, true);
+        console.log('Get temporary bills response:', response);
+        return response;
+    } catch (error) {
+        console.error('Get temporary bills failed:', error);
         throw error;
     }
 };

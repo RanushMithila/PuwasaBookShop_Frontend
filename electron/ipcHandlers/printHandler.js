@@ -1,78 +1,141 @@
-const { ipcMain } = require('electron');
-const { execFile } = require('child_process');
-const path = require('path');
+const { ipcMain } = require("electron");
+const { execFile } = require("child_process");
+const path = require("path");
+const fs = require("fs");
 
-// Optional native printer module (not required for Python path)
-try {
-  // eslint-disable-next-line import/no-extraneous-dependencies, global-require
-  require('printer');
-  console.log('Printer module loaded successfully');
-} catch (err) {
-  console.warn('Printer module not available (optional):', err.message);
-}
+function runPythonPrint(event, receiptData) {
+  const printingDir = path.join(__dirname, "printing");
+  const outJson = path.join(printingDir, "last_bill.json");
+  const outPdf = path.join(printingDir, "last_python_bill.pdf");
+  const logoPath = path.join(printingDir, "logo.png");
 
-function runPythonPrint(receiptData) {
-  const scriptPath = path.join(__dirname, 'printing', 'main.py');
-  const payload = JSON.stringify(receiptData || {});
-  const isWin = process.platform === 'win32';
+  const items = Array.isArray(receiptData.Details) ? receiptData.Details : [];
+  const billId =
+    receiptData.BillID || `INV-${new Date().getFullYear()}-${Date.now()}`;
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
+    now.getDate()
+  )} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
-  const candidates = isWin
-    ? [
-        { cmd: 'py', args: ['-3'] },
-        { cmd: 'py', args: [] },
-        { cmd: 'python', args: [] },
-        { cmd: 'python3', args: [] },
-      ]
-    : [
-        { cmd: 'python3', args: [] },
-        { cmd: 'python', args: [] },
-      ];
+  const billJson = {
+    BillID: String(billId),
+    date: dateStr,
+    CashierID: String(receiptData.CashierID || "1"),
+    CashierName: receiptData.CashierName || "",
+    CustomerName: receiptData.CustomerName || "Unknown",
+    CustomerFName: receiptData.CustomerFName || "",
+    CustomerLName: receiptData.CustomerLName || "",
+    Subtotal: Number(receiptData.Subtotal || 0),
+    Total: Number(receiptData.Total || 0),
+    Discount: Number(receiptData.Discount || 0),
+    CashAmount: Number(receiptData.CashAmount || 0),
+    CardAmount: Number(receiptData.CardAmount || 0),
+    Balance: Number(receiptData.Balance || 0),
+    Details: items.map((i) => ({
+      ItemName: i.ItemName || "Unknown",
+      QTY: Number(i.QTY || 1),
+      UnitPrice: Number(i.UnitPrice || 0),
+    })),
+  };
 
-  return new Promise((resolve, reject) => {
-    const tryNext = (index = 0) => {
-      if (index >= candidates.length) {
-        reject(new Error('No suitable Python interpreter found on PATH.'));
+  if (!fs.existsSync(printingDir))
+    fs.mkdirSync(printingDir, { recursive: true });
+
+  const resultBase = {
+    success: true,
+    printed: false,
+    bill: billJson,
+    jsonPath: outJson,
+    pdfPath: null,
+    stdout: null,
+    stderr: null,
+    message: null,
+  };
+
+  // Write-only flow: used by Save — write last_bill.json and notify renderer (interim/final)
+  if (receiptData && receiptData.WriteOnly) {
+    let writeSuccess = false;
+    let writtenMTime = null;
+    try {
+      fs.writeFileSync(outJson, JSON.stringify(billJson, null, 2), "utf8");
+      writeSuccess = true;
+      try {
+        const stat = fs.statSync(outJson);
+        writtenMTime = stat.mtime.toISOString();
+      } catch (sErr) {}
+      console.log(`printHandler: Wrote last_bill.json to ${outJson}`);
+    } catch (err) {
+      console.error("printHandler: Failed to write last_bill.json:", err);
+    }
+
+    try {
+      const stage = Number(billJson.Balance || 0) !== 0 ? "final" : "interim";
+      if (event && event.sender && event.sender.send) {
+        event.sender.send("last-bill-updated", {
+          BillID: billJson.BillID,
+          Balance: billJson.Balance,
+          writeStage: stage,
+        });
+      }
+    } catch (notifyErr) {
+      console.warn("printHandler: failed to notify renderer:", notifyErr);
+    }
+
+    return Object.assign(resultBase, { writeSuccess, writtenMTime });
+  }
+
+  // Non-write flow: run the print.exe using the existing last_bill.json (do NOT overwrite it)
+  const exePath = path.join(printingDir, "print.exe");
+  if (!fs.existsSync(exePath)) {
+    resultBase.message = `print.exe not found at ${exePath}`;
+    console.warn("printHandler:", resultBase.message);
+    return resultBase;
+  }
+
+  if (!fs.existsSync(logoPath)) {
+    console.warn(
+      `printHandler: logo.png not found at ${logoPath}, continuing without logo`
+    );
+  }
+
+  return new Promise((resolve) => {
+    console.log("Invoking print.exe:", exePath, outJson);
+    const execOptions = {
+      cwd: printingDir,
+      windowsHide: true,
+      timeout: 120000,
+      env: Object.assign({}, process.env),
+    };
+
+    execFile(exePath, [outJson], execOptions, (error, stdout, stderr) => {
+      resultBase.stdout = stdout?.toString().trim();
+      resultBase.stderr = stderr?.toString().trim();
+
+      if (error) {
+        resultBase.message = `print.exe failed: ${error.message}`;
+        console.warn("printHandler: print.exe error:", error.message);
+        resolve(resultBase);
         return;
       }
 
-      const { cmd, args } = candidates[index];
-      const finalArgs = [...args, scriptPath, payload];
-
-      execFile(cmd, finalArgs, { windowsHide: true, timeout: 60000 }, (error, stdout, stderr) => {
-        const out = (stdout || '').toString().trim();
-        const errOut = (stderr || '').toString().trim();
-
-        if (!error) {
-          let printer;
-          const m = /Print job sent successfully to\s+(.+)/i.exec(out);
-          if (m && m[1]) printer = m[1].trim();
-          resolve({ success: true, printer, message: out });
-          return;
-        }
-
-        // If interpreter not found or generic failure, try next candidate; otherwise surface error
-        const code = typeof error.code === 'number' ? error.code : undefined;
-        const msg = errOut || out || error.message || 'Python execution failed.';
-
-        // 1/127 often indicate command not found; keep trying.
-        if (code === 1 || code === 127) {
-          tryNext(index + 1);
-          return;
-        }
-        reject(new Error(msg));
-      });
-    };
-    tryNext(0);
+      const pdfExists = fs.existsSync(outPdf);
+      resultBase.printed = !!pdfExists;
+      resultBase.pdfPath = pdfExists ? outPdf : null;
+      if (!pdfExists)
+        resultBase.message = "print.exe completed but PDF was not created";
+      resolve(resultBase);
+    });
   });
 }
 
-ipcMain.handle('print-receipt', async (event, receiptData = {}) => {
-  console.log('print receipt: receiptData:', receiptData);
+ipcMain.handle("print-receipt", async (event, receiptData = {}) => {
   try {
-    const result = await runPythonPrint(receiptData);
+    console.log("Received receiptData:", receiptData);
+    const result = await runPythonPrint(event, receiptData);
     return result;
   } catch (e) {
-    console.error('print receipt: failed:', e?.message || e);
+    console.error("print receipt failed:", e?.message || e);
     return { success: false, error: e?.message || String(e) };
   }
 });
