@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 
-const AlertModal = ({ isOpen, onClose, title, message }) => {
+const AlertModal = ({ isOpen, onClose, title, message, type = "info" }) => {
   const okButtonRef = useRef(null);
 
   useEffect(() => {
@@ -11,18 +11,91 @@ const AlertModal = ({ isOpen, onClose, title, message }) => {
 
   if (!isOpen) return null;
 
+  // Type-based configuration
+  const config =
+    {
+      success: {
+        bgColor: "bg-emerald-50",
+        iconColor: "text-emerald-500",
+        borderColor: "border-emerald-200",
+        buttonColor:
+          "bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500",
+        icon: (
+          <svg
+            className="w-12 h-12"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 13l4 4L19 7"
+            />
+          </svg>
+        ),
+      },
+      error: {
+        bgColor: "bg-red-50",
+        iconColor: "text-red-500",
+        borderColor: "border-red-200",
+        buttonColor: "bg-red-600 hover:bg-red-700 focus:ring-red-500",
+        icon: (
+          <svg
+            className="w-12 h-12"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        ),
+      },
+      info: {
+        bgColor: "bg-blue-50",
+        iconColor: "text-blue-500",
+        borderColor: "border-blue-200",
+        buttonColor: "bg-blue-600 hover:bg-blue-700 focus:ring-blue-500",
+        icon: (
+          <svg
+            className="w-12 h-12"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+        ),
+      },
+    }[type] || config.info;
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
-      <div className="bg-white p-6 rounded-lg shadow-xl w-96 relative">
-        <button
-          onClick={onClose}
-          className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 text-xl font-bold"
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-[100] animate-in fade-in duration-200">
+      <div
+        className={`bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border ${config.borderColor} animate-in zoom-in-95 duration-200`}
+      >
+        <div
+          className={`p-6 flex flex-col items-center text-center ${config.bgColor}`}
         >
-          ×
-        </button>
-        <h2 className="text-xl font-bold text-gray-800 mb-4">{title}</h2>
-        <div className="mb-6 text-gray-700 whitespace-pre-line">{message}</div>
-        <div className="flex justify-end">
+          <div className={`${config.iconColor} mb-4`}>{config.icon}</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{title}</h2>
+          <p className="text-gray-600 font-medium whitespace-pre-line leading-relaxed">
+            {message}
+          </p>
+        </div>
+
+        <div className="p-4 bg-gray-50 flex justify-center">
           <button
             ref={okButtonRef}
             onClick={onClose}
@@ -31,7 +104,7 @@ const AlertModal = ({ isOpen, onClose, title, message }) => {
                 onClose();
               }
             }}
-            className="px-6 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+            className={`w-full py-3 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 ${config.buttonColor}`}
           >
             OK
           </button>

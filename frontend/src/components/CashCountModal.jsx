@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import useAuthStore from "../store/AuthStore";
 import { setClosingAmount } from "../services/CashRegisterService";
 
@@ -28,6 +28,10 @@ const CashCountModal = ({ isOpen, onClose }) => {
   // Toast notification state
   const [toast, setToast] = useState({ show: false, type: "", message: "" });
 
+  // Refs for input fields and save button for Enter key navigation
+  const inputRefs = useRef([]);
+  const saveButtonRef = useRef(null);
+
   useEffect(() => {
     const calculatedTotal = denominations.reduce((sum, denom, index) => {
       const count = parseInt(counts[index]) || 0;
@@ -36,13 +40,31 @@ const CashCountModal = ({ isOpen, onClose }) => {
     setTotal(calculatedTotal);
   }, [counts, denominations]);
 
-  // Reset counts when modal opens
+  // Reset counts when modal opens and focus on first input (5000)
   useEffect(() => {
     if (isOpen) {
       setCounts(denominations.map(() => ""));
       setToast({ show: false, type: "", message: "" });
+      // Focus on first input (Rs: 5000) when modal opens
+      setTimeout(() => {
+        inputRefs.current[0]?.focus();
+      }, 100);
     }
   }, [isOpen, denominations]);
+
+  // Handle Enter key press to navigate to next input or save button
+  const handleKeyDown = (index, e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (index < denominations.length - 1) {
+        // Move to next input
+        inputRefs.current[index + 1]?.focus();
+      } else {
+        // Last input, move to save button
+        saveButtonRef.current?.focus();
+      }
+    }
+  };
 
   // Handle post-save navigation
   useEffect(() => {
@@ -203,9 +225,11 @@ const CashCountModal = ({ isOpen, onClose }) => {
                   </td>
                   <td className="p-2">
                     <input
+                      ref={(el) => (inputRefs.current[index] = el)}
                       type="number"
                       value={counts[index]}
                       onChange={(e) => handleCountChange(index, e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(index, e)}
                       className="w-full px-3 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                       min="0"
                       placeholder="0"
@@ -238,6 +262,7 @@ const CashCountModal = ({ isOpen, onClose }) => {
             Cancel
           </button>
           <button
+            ref={saveButtonRef}
             onClick={handleSave}
             className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
             disabled={isLoading}
