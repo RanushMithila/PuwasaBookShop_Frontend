@@ -19,6 +19,8 @@ const createWindow = () => {
     },
   });
 
+  mainWindow.maximize();
+
   // Load the appropriate URL or file based on the environment
   if (isDev) {
     mainWindow.loadURL("http://localhost:5173"); // Development server URL

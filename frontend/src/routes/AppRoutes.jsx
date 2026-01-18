@@ -1,8 +1,6 @@
 import { HashRouter, Routes, Route } from "react-router-dom";
 import LoginPage from "../pages/LoginPage";
 import BillingPage from "../pages/BillingPage";
-import CategoryManagementPage from "../pages/CategoryManagementPage";
-import ItemManagementPage from "../pages/ItemManagementPage";
 import Layout from "../components/Layout";
 
 const AppRoutes = () => {
@@ -19,22 +17,6 @@ const AppRoutes = () => {
           element={
             <Layout>
               <BillingPage />
-            </Layout>
-          }
-        />
-        <Route
-          path="/categories"
-          element={
-            <Layout>
-              <CategoryManagementPage />
-            </Layout>
-          }
-        />
-        <Route
-          path="/items"
-          element={
-            <Layout>
-              <ItemManagementPage />
             </Layout>
           }
         />

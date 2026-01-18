@@ -195,3 +195,19 @@ export const checkRegisterClosed = async (deviceId) => {
     throw error;
   }
 };
+
+/**
+ * Gets all locations for cash register setup.
+ * @returns {Promise<object>} API response with locations array
+ */
+export const getAllLocations = async () => {
+  try {
+    console.log("Fetching all locations");
+    const response = await httpClient.get("/location/getAll", true);
+    console.log("getAllLocations response:", response);
+    return response;
+  } catch (error) {
+    console.error("getAllLocations failed:", error);
+    throw error;
+  }
+};

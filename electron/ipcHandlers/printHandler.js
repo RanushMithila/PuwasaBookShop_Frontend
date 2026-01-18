@@ -15,7 +15,7 @@ function runPythonPrint(event, receiptData) {
   const now = new Date();
   const pad = (n) => String(n).padStart(2, "0");
   const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
-    now.getDate()
+    now.getDate(),
   )} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
   const billJson = {
@@ -55,34 +55,40 @@ function runPythonPrint(event, receiptData) {
 
   // Write-only flow: used by Save — write last_bill.json and notify renderer (interim/final)
   if (receiptData && receiptData.WriteOnly) {
-    let writeSuccess = false;
-    let writtenMTime = null;
-    try {
-      fs.writeFileSync(outJson, JSON.stringify(billJson, null, 2), "utf8");
-      writeSuccess = true;
+    return (async () => {
+      let writeSuccess = false;
+      let writtenMTime = null;
       try {
-        const stat = fs.statSync(outJson);
-        writtenMTime = stat.mtime.toISOString();
-      } catch (sErr) {}
-      console.log(`printHandler: Wrote last_bill.json to ${outJson}`);
-    } catch (err) {
-      console.error("printHandler: Failed to write last_bill.json:", err);
-    }
-
-    try {
-      const stage = Number(billJson.Balance || 0) !== 0 ? "final" : "interim";
-      if (event && event.sender && event.sender.send) {
-        event.sender.send("last-bill-updated", {
-          BillID: billJson.BillID,
-          Balance: billJson.Balance,
-          writeStage: stage,
-        });
+        await fs.promises.writeFile(
+          outJson,
+          JSON.stringify(billJson, null, 2),
+          "utf8",
+        );
+        writeSuccess = true;
+        try {
+          const stat = await fs.promises.stat(outJson);
+          writtenMTime = stat.mtime.toISOString();
+        } catch (sErr) {}
+        console.log(`printHandler: Wrote last_bill.json to ${outJson}`);
+      } catch (err) {
+        console.error("printHandler: Failed to write last_bill.json:", err);
       }
-    } catch (notifyErr) {
-      console.warn("printHandler: failed to notify renderer:", notifyErr);
-    }
 
-    return Object.assign(resultBase, { writeSuccess, writtenMTime });
+      try {
+        const stage = Number(billJson.Balance || 0) !== 0 ? "final" : "interim";
+        if (event && event.sender && event.sender.send) {
+          event.sender.send("last-bill-updated", {
+            BillID: billJson.BillID,
+            Balance: billJson.Balance,
+            writeStage: stage,
+          });
+        }
+      } catch (notifyErr) {
+        console.warn("printHandler: failed to notify renderer:", notifyErr);
+      }
+
+      return Object.assign(resultBase, { writeSuccess, writtenMTime });
+    })();
   }
 
   // Non-write flow: run the print.exe using the existing last_bill.json (do NOT overwrite it)
@@ -95,7 +101,7 @@ function runPythonPrint(event, receiptData) {
 
   if (!fs.existsSync(logoPath)) {
     console.warn(
-      `printHandler: logo.png not found at ${logoPath}, continuing without logo`
+      `printHandler: logo.png not found at ${logoPath}, continuing without logo`,
     );
   }
 
