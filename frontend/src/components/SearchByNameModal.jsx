@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import debounce from "lodash.debounce";
-import { searchItemsByName } from "../services/InventoryService";
-import { getItemQuantity } from "../services/BillingService";
+import { searchItemsByName, getItemQuantity } from "../services/BillingService";
 
 const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
   const [searchQuery, setSearchQuery] = useState("");

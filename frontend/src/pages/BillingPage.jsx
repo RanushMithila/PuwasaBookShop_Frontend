@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import debounce from "lodash.debounce";
 import BillingItemRow from "../components/BillingItemRow";
 import SummaryBox from "../components/SummaryBox";
@@ -20,8 +20,8 @@ import {
   getBill,
   cancelBill,
   getTemporaryBills,
+  getInventory,
 } from "../services/BillingService";
-import { getInventory } from "../services/InventoryService";
 import {
   checkRegisterOpen,
   setOpeningAmount,
@@ -59,6 +59,7 @@ const BillingPage = () => {
     isOpen: false,
     title: "",
     message: "",
+    type: "info",
   });
 
   // Customer
@@ -88,6 +89,9 @@ const BillingPage = () => {
   const saveButtonRef = useRef();
   const printButtonRef = useRef();
   const rowRefs = useRef(new Map());
+  const registerRowRef = useCallback((id, refs) => {
+    rowRefs.current.set(id, refs);
+  }, []);
   const [inputsLocked, setInputsLocked] = useState(false);
 
   // Computed totals from store
@@ -176,7 +180,7 @@ const BillingPage = () => {
         if (response.status === true && response.data) {
           if (response.data.isOpen === false) {
             console.log(
-              "Cash register is closed, showing opening amount modal"
+              "Cash register is closed, showing opening amount modal",
             );
             setShowOpeningAmountModal(true);
           } else {
@@ -210,7 +214,7 @@ const BillingPage = () => {
       if (response.status === true) {
         console.log(
           "Opening amount set successfully, SessionID:",
-          response.data?.SessionID
+          response.data?.SessionID,
         );
         setRegisterSessionId(response.data?.SessionID);
         setShowOpeningAmountModal(false);
@@ -219,16 +223,25 @@ const BillingPage = () => {
       } else {
         console.error(
           "Failed to set opening amount:",
-          response.error_message || response.message
+          response.error_message || response.message,
         );
-        alert(
-          "Failed to set opening amount: " +
-            (response.error_message || response.message)
-        );
+        setAlertConfig({
+          isOpen: true,
+          title: "Registration Error",
+          message:
+            "Failed to set opening amount: " +
+            (response.error_message || response.message),
+          type: "error",
+        });
       }
     } catch (error) {
       console.error("Set opening amount failed:", error);
-      alert("Error setting opening amount: " + error.message);
+      setAlertConfig({
+        isOpen: true,
+        title: "Registration Error",
+        message: "Error setting opening amount: " + error.message,
+        type: "error",
+      });
     } finally {
       setIsOpeningAmountLoading(false);
     }
@@ -299,7 +312,7 @@ const BillingPage = () => {
       // Get current quantity in cart
       const currentItems = useBillingStore.getState().selectedItems;
       const existingItem = currentItems.find(
-        (i) => i.inventoryID === item.inventoryID
+        (i) => i.inventoryID === item.inventoryID,
       );
       const currentQty = existingItem ? existingItem.QTY : 0;
       const requestQty = currentQty + 1;
@@ -392,16 +405,21 @@ const BillingPage = () => {
       const now = new Date();
       const pad = (n) => String(n).padStart(2, "0");
       const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
-        now.getDate()
+        now.getDate(),
       )} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(
-        now.getSeconds()
+        now.getSeconds(),
       )}`;
       // Lock inputs immediately when Save is pressed to prevent further edits
       setInputsLocked(true);
       // Move focus to the Print Invoice button so the user can press Enter to print
       setTimeout(() => printButtonRef.current?.focus(), 0);
       if (!selectedItems || selectedItems.length === 0) {
-        alert("Add at least one item before saving the bill.");
+        setAlertConfig({
+          isOpen: true,
+          title: "Items Missing",
+          message: "Add at least one item before saving the bill.",
+          type: "info",
+        });
         setIsProcessing(false);
         setInputsLocked(false);
         return;
@@ -416,7 +434,12 @@ const BillingPage = () => {
           RegisterID: deviceId,
         });
         if (!(createResp && createResp.status === true && createResp.data)) {
-          alert("Failed to create bill");
+          setAlertConfig({
+            isOpen: true,
+            title: "Save Error",
+            message: "Failed to create bill",
+            type: "error",
+          });
           return;
         }
         billIdToUse = createResp.data;
@@ -439,61 +462,19 @@ const BillingPage = () => {
       });
       console.log("Add details response:", resp);
       if (!(resp && resp.status === true)) {
-        alert(
-          "Failed to save details: " +
-            (resp?.error_message || resp?.message || JSON.stringify(resp))
-        );
+        setAlertConfig({
+          isOpen: true,
+          title: "Save Error",
+          message:
+            "Failed to save details: " +
+            (resp?.error_message || resp?.message || JSON.stringify(resp)),
+          type: "error",
+        });
         return;
       }
 
-      // After successfully adding details, write a first-last_bill.json dump without balance
-      try {
-        if (window?.electron?.ipcRenderer) {
-          const interimPayload = {
-            BillID: String(billIdToUse),
-            date: dateStr,
-            CashierName: cashierName,
-            CustomerName: (customerName || "").trim() || "Unknown",
-            CustomerFName: (customerName || "").trim().split(/\s+/)[0] || "",
-            CustomerLName:
-              (customerName || "").trim().split(/\s+/).slice(1).join(" ") || "",
-            Subtotal: Number(subtotal || 0),
-            Total: Number(total || 0),
-            Discount: Number(totalDiscount || 0),
-            CashAmount: parseFloat(cashPayAmount) || 0,
-            CardAmount: parseFloat(cardAmount) || 0,
-            Balance: 0,
-            // Use the selectedItems so we include descriptive name and unit price
-            Details: selectedItems.map((it) => ({
-              ItemName:
-                it.itemDescription ||
-                it.Description ||
-                it.itemName ||
-                `Item ${it.inventoryID}`,
-              QTY: Number(it.QTY || 1),
-              UnitPrice: Number(
-                it.itemUnitPrice || it.UnitPrice || it.price || 0
-              ),
-            })),
-            // Instruct main process to only write JSON and not run the printer
-            WriteOnly: true,
-          };
-          console.log(
-            "Saving interim last_bill.json (write-only):",
-            interimPayload
-          );
-          try {
-            await window.electron.ipcRenderer.invoke(
-              "print-receipt",
-              interimPayload
-            );
-          } catch (ipcErr) {
-            console.warn("Failed to write interim last_bill.json:", ipcErr);
-          }
-        }
-      } catch (wErr) {
-        console.warn("Interim last_bill write failed:", wErr);
-      }
+      // Removed interim last_bill.json write (WriteOnly) to reduce redundant IPC overhead.
+      // The final save after completion will handle the state persistence.
 
       // Complete billing and show returned change
       const payment = {
@@ -504,12 +485,16 @@ const BillingPage = () => {
       if (completeResp && completeResp.status === true) {
         setCreditBalance(completeResp.data || 0);
       } else {
-        alert(
-          "Failed to complete billing: " +
+        setAlertConfig({
+          isOpen: true,
+          title: "Completion Error",
+          message:
+            "Failed to complete billing: " +
             (completeResp?.error_message ||
               completeResp?.message ||
-              JSON.stringify(completeResp))
-        );
+              JSON.stringify(completeResp)),
+          type: "error",
+        });
       }
       // After a successful Save (complete billing), we DO NOT clear the UI.
       // The user wants to see the details. Clearing happens on Print or Clear button.
@@ -545,19 +530,19 @@ const BillingPage = () => {
                   `Item ${it.inventoryID}`,
                 QTY: Number(it.QTY || 1),
                 UnitPrice: Number(
-                  it.itemUnitPrice || it.UnitPrice || it.price || 0
+                  it.itemUnitPrice || it.UnitPrice || it.price || 0,
                 ),
               })),
               WriteOnly: true,
             };
             console.log(
               "Updating final last_bill.json with balance:",
-              finalPayload.Balance
+              finalPayload.Balance,
             );
             try {
               await window.electron.ipcRenderer.invoke(
                 "print-receipt",
-                finalPayload
+                finalPayload,
               );
             } catch (ipcErr2) {
               console.warn("Failed to write final last_bill.json:", ipcErr2);
@@ -579,15 +564,18 @@ const BillingPage = () => {
         setUserEditedCash(false);
         setUserEditedCard(false);
 
-        // Focus item code for next transaction
-        setTimeout(() => {
-          itemCodeRef.current?.focus();
-          itemCodeRef.current?.select?.();
-        }, 100);
+        // Focus Print Invoice button so user can press Enter to print
+        // (focus was already set at start of save, but ensure it stays there)
+        setTimeout(() => printButtonRef.current?.focus(), 100);
       }
     } catch (err) {
       console.error("Add details failed:", err);
-      alert("Error saving bill details: " + err.message);
+      setAlertConfig({
+        isOpen: true,
+        title: "Save Failed",
+        message: "Error saving bill details: " + err.message,
+        type: "error",
+      });
     } finally {
       // Always unlock inputs and stop processing spinner, regardless of success or error
       setInputsLocked(false);
@@ -600,7 +588,12 @@ const BillingPage = () => {
     try {
       setIsProcessing(true);
       if (!selectedItems || selectedItems.length === 0) {
-        alert("Add at least one item before saving the temporary bill.");
+        setAlertConfig({
+          isOpen: true,
+          title: "Items Missing",
+          message: "Add at least one item before saving the temporary bill.",
+          type: "info",
+        });
         return;
       }
 
@@ -612,7 +605,12 @@ const BillingPage = () => {
         RegisterID: deviceId,
       });
       if (!(createResp && createResp.status === true && createResp.data)) {
-        alert("Failed to create temporary bill");
+        setAlertConfig({
+          isOpen: true,
+          title: "Temporary Save Error",
+          message: "Failed to create temporary bill",
+          type: "error",
+        });
         return;
       }
       const billId = createResp.data;
@@ -628,12 +626,16 @@ const BillingPage = () => {
         Items: itemsPayload,
       });
       if (!(detailsResp && detailsResp.status === true)) {
-        alert(
-          "Failed to save temporary bill details: " +
+        setAlertConfig({
+          isOpen: true,
+          title: "Temporary Save Error",
+          message:
+            "Failed to save temporary bill details: " +
             (detailsResp?.error_message ||
               detailsResp?.message ||
-              JSON.stringify(detailsResp))
-        );
+              JSON.stringify(detailsResp)),
+          type: "error",
+        });
         return;
       }
 
@@ -646,10 +648,20 @@ const BillingPage = () => {
         /* ignore */
       }
 
-      alert("Temporary bill saved (ID: " + billId + ")");
+      setAlertConfig({
+        isOpen: true,
+        title: "Bill Saved",
+        message: "Temporary bill saved (ID: " + billId + ")",
+        type: "success",
+      });
     } catch (err) {
       console.error("Save temporary failed:", err);
-      alert("Error saving temporary bill: " + (err?.message || err));
+      setAlertConfig({
+        isOpen: true,
+        title: "Temporary Save Failed",
+        message: "Error saving temporary bill: " + (err?.message || err),
+        type: "error",
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -670,10 +682,15 @@ const BillingPage = () => {
       // If ipcRenderer is not available, reset printing flag and notify the user
       if (!window?.electron?.ipcRenderer) {
         console.warn(
-          "handlePrintInvoice: ipcRenderer not available in renderer"
+          "handlePrintInvoice: ipcRenderer not available in renderer",
         );
         setIsPrinting(false);
-        alert("Printing is not available in this environment.");
+        setAlertConfig({
+          isOpen: true,
+          title: "Print Error",
+          message: "Printing is not available in this environment.",
+          type: "error",
+        });
         return;
       }
 
@@ -711,14 +728,14 @@ const BillingPage = () => {
       console.log("handlePrintInvoice: payload prepared", payload);
       const result = await window.electron.ipcRenderer.invoke(
         "print-receipt",
-        payload
+        payload,
       );
       console.log("Print result:", result);
 
       if (!result || result.success !== true) {
         console.warn(
           "Printing failed or returned unsuccessful result:",
-          result
+          result,
         );
         if (result) {
           console.warn("error:", result.error);
@@ -774,7 +791,7 @@ const BillingPage = () => {
           const exists = prev.some((b) => b.BillID === resp.data.BillID);
           if (!exists) return [resp.data, ...prev];
           return prev.map((b) =>
-            b.BillID === resp.data.BillID ? { ...b, ...resp.data } : b
+            b.BillID === resp.data.BillID ? { ...b, ...resp.data } : b,
           );
         });
 
@@ -845,7 +862,7 @@ const BillingPage = () => {
         // API returned an error message (for example: No pending bills found.)
         setTemporaryBills([]);
         setTempBillsError(
-          resp.error_message || resp.message || "No temporary bills found"
+          resp.error_message || resp.message || "No temporary bills found",
         );
       } else {
         setTemporaryBills([]);
@@ -881,7 +898,7 @@ const BillingPage = () => {
       } else {
         console.warn("Failed to delete temporary bill", resp);
         setTempBillsError(
-          resp?.error_message || resp?.message || "Delete failed"
+          resp?.error_message || resp?.message || "Delete failed",
         );
       }
     } catch (err) {
@@ -1111,9 +1128,7 @@ const BillingPage = () => {
                 key={item.inventoryID || `it-${i}`}
                 item={item}
                 onDoubleClick={() => removeItem(item.inventoryID)}
-                registerRowRef={(id, refs) => {
-                  rowRefs.current.set(id, refs);
-                }}
+                registerRowRef={registerRowRef}
                 onFocusItemCode={() => {
                   itemCodeRef.current?.focus();
                   itemCodeRef.current?.select?.();
@@ -1234,7 +1249,7 @@ const BillingPage = () => {
               Last Bill Balance
             </div>
             <div className="text-2xl font-bold text-gray-800">
-              {Number(lastBillBalance).toFixed(2)}
+              {Math.abs(Number(lastBillBalance)).toFixed(2)}
             </div>
           </div>
 
@@ -1315,6 +1330,7 @@ const BillingPage = () => {
         onClose={handleCloseAlert}
         title={alertConfig.title}
         message={alertConfig.message}
+        type={alertConfig.type}
       />
       <CashInOutModal
         isOpen={showCashInOut}
