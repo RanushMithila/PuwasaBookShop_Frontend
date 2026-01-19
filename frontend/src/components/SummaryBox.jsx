@@ -45,7 +45,7 @@ const SummaryBox = () => {
 
     try {
       const billData = {
-        LocationID: location?.id || 1,
+        LocationID: location?.id,
         CustomerID: customer?.id || 1,
         CashierID: user?.id || 1,
       };
@@ -68,7 +68,7 @@ const SummaryBox = () => {
       const completeResponse = await completeBill(billId, paymentData);
       if (!completeResponse.status)
         throw new Error(
-          completeResponse.error_message || "Failed to complete billing."
+          completeResponse.error_message || "Failed to complete billing.",
         );
 
       alert(`${completeResponse.message}\nBalance: ${completeResponse.data}`);
@@ -102,7 +102,7 @@ const SummaryBox = () => {
             "Item",
           QTY: Number(item.QTY || 1),
           UnitPrice: Number(
-            item.itemUnitPrice || item.UnitPrice || item.price || 0
+            item.itemUnitPrice || item.UnitPrice || item.price || 0,
           ),
         })),
       };
@@ -112,7 +112,7 @@ const SummaryBox = () => {
       try {
         const printResponse = await window.electron.ipcRenderer.invoke(
           "print-receipt",
-          receiptData
+          receiptData,
         );
         if (!printResponse.success) throw new Error(printResponse.error);
 
@@ -143,7 +143,7 @@ const SummaryBox = () => {
     try {
       // Create a bill (if needed) and add details but do NOT complete the bill
       const billData = {
-        LocationID: location?.id || 1,
+        LocationID: location?.id,
         CustomerID: customer?.id || 1,
         CashierID: user?.id || 1,
       };
@@ -151,7 +151,7 @@ const SummaryBox = () => {
       const createResp = await createBill(billData);
       if (!createResp || !createResp.status) {
         throw new Error(
-          createResp?.error_message || "Failed to create bill for hold"
+          createResp?.error_message || "Failed to create bill for hold",
         );
       }
 
@@ -170,7 +170,7 @@ const SummaryBox = () => {
       });
       if (!detailsResp || !detailsResp.status) {
         throw new Error(
-          detailsResp?.error_message || "Failed to save held bill details"
+          detailsResp?.error_message || "Failed to save held bill details",
         );
       }
 

@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import debounce from "lodash.debounce";
 import { searchItemsByName, getItemQuantity } from "../services/BillingService";
+import useAuthStore from "../store/AuthStore";
 
 const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
+  const location = useAuthStore((s) => s.location);
 
   const search = async (name) => {
     if (!name || name.length < 4) {
@@ -15,7 +17,7 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
     }
     setIsLoading(true);
     try {
-      const nameResp = await searchItemsByName(name, 1);
+      const nameResp = await searchItemsByName(name, location?.id || 1);
       if (
         nameResp &&
         nameResp.status === true &&
@@ -24,14 +26,17 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
         const itemsWithQuantity = await Promise.all(
           nameResp.data.map(async (item) => {
             try {
-              const quantityResp = await getItemQuantity(item.barcode, 1);
+              const quantityResp = await getItemQuantity(
+                item.barcode,
+                location?.id || 1,
+              );
               const quantity = quantityResp?.data?.[0]?.quantity ?? 0;
               return { ...item, quantity };
             } catch (err) {
               console.error(`Failed to get quantity for ${item.barcode}`, err);
               return { ...item, quantity: "N/A" };
             }
-          })
+          }),
         );
         setResults(itemsWithQuantity);
         setHighlightIndex(0);
@@ -120,8 +125,9 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
               {results.map((item, idx) => (
                 <div
                   key={item.inventoryID}
-                  className={`p-3 rounded-xl uppercase ${
-                    highlightIndex === idx ? "bg-blue-100" : ""
+                  onClick={() => handleSelectItem(item)}
+                  className={`p-3 rounded-xl uppercase cursor-pointer transition-colors ${
+                    highlightIndex === idx ? "bg-blue-100" : "hover:bg-gray-50"
                   }`}
                 >
                   <div className="font-semibold">{item.itemName}</div>

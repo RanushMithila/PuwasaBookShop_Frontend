@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { login } from "../services/AuthService";
+import { login, getProfile } from "../services/AuthService";
 import {
   getMachineId,
   getRegisterByDeviceId,
   createRegister,
   getAllLocations,
+  listCashRegisters,
 } from "../services/CashRegisterService";
 import useAuthStore from "../store/AuthStore";
 
@@ -17,6 +18,7 @@ const LoginForm = () => {
   const navigate = useNavigate();
   const setTokens = useAuthStore((state) => state.setTokens);
   const setDeviceId = useAuthStore((state) => state.setDeviceId);
+  const setSession = useAuthStore((state) => state.setSession);
 
   // Cash register popup state
   const [showRegisterPopup, setShowRegisterPopup] = useState(false);
@@ -96,8 +98,36 @@ const LoginForm = () => {
           // Device is already registered
           console.log(
             "Device is registered as cash register:",
-            registerResponse.data
+            registerResponse.data,
           );
+
+          // Fetch register list to find locationID (as requested)
+          try {
+            const registersResp = await listCashRegisters();
+            if (
+              registersResp.status === true &&
+              registersResp.data?.cashRegisters
+            ) {
+              const myRegister = registersResp.data.cashRegisters.find(
+                (r) => r.cashRegisterID === deviceId,
+              );
+              if (myRegister) {
+                console.log("Matched register:", myRegister);
+                // Fetch user profile and update session in store
+                const profile = await getProfile();
+                setSession({
+                  user: profile.user || profile, // Adjust based on actual API response
+                  location: {
+                    id: myRegister.locationID,
+                    name: myRegister.registerName,
+                  },
+                });
+              }
+            }
+          } catch (listErr) {
+            console.error("Failed to fetch registers or profile:", listErr);
+          }
+
           // Navigate to billing page
           navigate("/billing");
         } else {
@@ -138,12 +168,30 @@ const LoginForm = () => {
       const createResponse = await createRegister(
         selectedLocationId,
         registerName.trim(),
-        currentDeviceId
+        currentDeviceId,
       );
       console.log("Create register response:", createResponse);
 
       if (createResponse.status === true) {
         console.log("Cash register created successfully:", createResponse.data);
+
+        // Fetch user profile and update session in store
+        try {
+          const profile = await getProfile();
+          setSession({
+            user: profile.user || profile,
+            location: {
+              id: selectedLocationId,
+              name: registerName.trim(),
+            },
+          });
+        } catch (profileErr) {
+          console.error(
+            "Failed to fetch profile after registration:",
+            profileErr,
+          );
+        }
+
         setShowRegisterPopup(false);
         // Navigate to billing page after successful registration
         navigate("/billing");
@@ -151,7 +199,7 @@ const LoginForm = () => {
         setRegisterError(
           createResponse.error_message ||
             createResponse.message ||
-            "Failed to register cash register."
+            "Failed to register cash register.",
         );
       }
     } catch (error) {
