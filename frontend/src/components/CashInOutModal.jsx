@@ -72,34 +72,30 @@ const CashInOutModal = ({ isOpen, onClose }) => {
         deviceId,
         parseFloat(amount),
         isIn,
-        reason.trim()
+        reason.trim(),
       );
       console.log("cashInOut response:", response);
 
       if (response.status === true) {
         console.log(
           "Cash transaction recorded successfully, TransactionID:",
-          response.data?.TransactionID
+          response.data?.TransactionID,
         );
-        // Clear form
-        setAmount("");
-        setReason("");
-        setTransactionType("in");
         // Show success toast
         showToast(
           "success",
-          `${isIn ? "Cash In" : "Cash Out"} recorded successfully!`
+          `${isIn ? "Cash In" : "Cash Out"} recorded successfully!`,
         );
       } else {
         console.error(
           "Failed to record cash transaction:",
-          response.error_message || response.message
+          response.error_message || response.message,
         );
         showToast(
           "error",
           response.error_message ||
             response.message ||
-            "Failed to record transaction"
+            "Failed to record transaction",
         );
       }
     } catch (error) {

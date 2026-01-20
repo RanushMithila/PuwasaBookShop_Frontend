@@ -44,6 +44,8 @@ const BillingPage = () => {
   const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
   const location = useAuthStore((s) => s.location);
+  const storedLocationID = useAuthStore((s) => s.LocationID);
+  const LocationID = storedLocationID ? parseInt(storedLocationID, 10) : 1; // Fallback to 1 for safety
   const deviceId = useAuthStore((s) => s.deviceId);
 
   // UI state
@@ -455,7 +457,7 @@ const BillingPage = () => {
 
   const searchBarcode = async (code) => {
     try {
-      const resp = await getItemByBarcode(code, 1);
+      const resp = await getItemByBarcode(code, LocationID);
       if (resp && resp.status === true && Array.isArray(resp.data)) {
         setSuggestions(resp.data);
         setHighlightIndex(0);
@@ -465,6 +467,19 @@ const BillingPage = () => {
     } catch (err) {
       console.error("Barcode search failed:", err);
       setSuggestions([]);
+      if (
+        err.message?.includes("500") ||
+        err.message?.includes("Failed to fetch") ||
+        err.message?.includes("network")
+      ) {
+        setAlertConfig({
+          isOpen: true,
+          title: "Connection Error",
+          message:
+            "Could not reach the server. Please check your internet or contact technical support.",
+          type: "error",
+        });
+      }
     }
   };
 
@@ -479,8 +494,8 @@ const BillingPage = () => {
       const currentQty = existingItem ? existingItem.QTY : 0;
       const requestQty = currentQty + 1;
       // Verify with API
-      // LocationID is hardcoded as 1 per current context
-      const resp = await getItemQuantity(item.barcode, 1);
+      // LocationID is retrieved from AuthStore
+      const resp = await getItemQuantity(item.barcode, LocationID);
 
       if (
         resp &&
@@ -590,7 +605,7 @@ const BillingPage = () => {
       let billIdToUse = currentBillId;
       if (!billIdToUse) {
         const createResp = await createBill({
-          LocationID: location?.id,
+          LocationID: LocationID,
           CustomerID: selectedCustomerID || 1,
           CashierID: user?.id || 1,
           HelperID: selectedHelperID,
@@ -768,7 +783,7 @@ const BillingPage = () => {
 
       // Create a bill first
       const createResp = await createBill({
-        LocationID: location?.id,
+        LocationID: LocationID,
         CustomerID: selectedCustomerID || 1,
         CashierID: user?.id || 1,
         HelperID: selectedHelperID,
@@ -1008,7 +1023,7 @@ const BillingPage = () => {
     setLoadingTempBills(true);
     setTempBillsError("");
     try {
-      const resp = await getTemporaryBills(location?.id);
+      const resp = await getTemporaryBills(LocationID);
       if (resp && resp.status === true && Array.isArray(resp.data)) {
         // Replace local list with server truth; sort newest first by createdDateTime then BillID desc
         const getTs = (x) => {

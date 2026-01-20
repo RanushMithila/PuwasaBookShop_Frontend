@@ -116,11 +116,12 @@ const LoginForm = () => {
                 // Fetch user profile and update session in store
                 const profile = await getProfile();
                 setSession({
-                  user: profile.user || profile, // Adjust based on actual API response
+                  user: profile.user || profile,
                   location: {
-                    id: myRegister.locationID,
-                    name: myRegister.registerName,
+                    id: myRegister.LocationID,
+                    name: myRegister.RegisterName,
                   },
+                  LocationID: myRegister.LocationID,
                 });
               }
             }
@@ -181,9 +182,10 @@ const LoginForm = () => {
           setSession({
             user: profile.user || profile,
             location: {
-              id: selectedLocationId,
+              id: parseInt(selectedLocationId, 10),
               name: registerName.trim(),
             },
+            LocationID: parseInt(selectedLocationId, 10),
           });
         } catch (profileErr) {
           console.error(

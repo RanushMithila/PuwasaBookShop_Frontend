@@ -15,7 +15,7 @@ const SummaryBox = () => {
 
   // Use proper Zustand hooks for reactivity
   const user = useAuthStore((state) => state.user);
-  const location = useAuthStore((state) => state.location);
+  const LocationID = useAuthStore((state) => state.LocationID) || 1;
 
   // Get billing store selectors and state
   const selectedItems = useBillingStore((state) => state.selectedItems);
@@ -45,7 +45,7 @@ const SummaryBox = () => {
 
     try {
       const billData = {
-        LocationID: location?.id,
+        LocationID: LocationID,
         CustomerID: customer?.id || 1,
         CashierID: user?.id || 1,
       };
@@ -143,7 +143,7 @@ const SummaryBox = () => {
     try {
       // Create a bill (if needed) and add details but do NOT complete the bill
       const billData = {
-        LocationID: location?.id,
+        LocationID: LocationID,
         CustomerID: customer?.id || 1,
         CashierID: user?.id || 1,
       };

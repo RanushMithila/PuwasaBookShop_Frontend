@@ -8,7 +8,8 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
-  const location = useAuthStore((s) => s.location);
+  const storedLocationID = useAuthStore((s) => s.LocationID);
+  const LocationID = storedLocationID ? parseInt(storedLocationID, 10) : 1;
 
   const search = async (name) => {
     if (!name || name.length < 4) {
@@ -17,28 +18,13 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
     }
     setIsLoading(true);
     try {
-      const nameResp = await searchItemsByName(name, location?.id || 1);
+      const nameResp = await searchItemsByName(name, LocationID);
       if (
         nameResp &&
         nameResp.status === true &&
         Array.isArray(nameResp.data)
       ) {
-        const itemsWithQuantity = await Promise.all(
-          nameResp.data.map(async (item) => {
-            try {
-              const quantityResp = await getItemQuantity(
-                item.barcode,
-                location?.id || 1,
-              );
-              const quantity = quantityResp?.data?.[0]?.quantity ?? 0;
-              return { ...item, quantity };
-            } catch (err) {
-              console.error(`Failed to get quantity for ${item.barcode}`, err);
-              return { ...item, quantity: "N/A" };
-            }
-          }),
-        );
-        setResults(itemsWithQuantity);
+        setResults(nameResp.data);
         setHighlightIndex(0);
       } else {
         setResults([]);
@@ -46,6 +32,15 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
     } catch (err) {
       console.error("Name search failed:", err);
       setResults([]);
+      if (
+        err.message?.includes("500") ||
+        err.message?.includes("Failed to fetch") ||
+        err.message?.includes("network")
+      ) {
+        alert(
+          "Server connection error. Please verify the backend is running and reachable.",
+        );
+      }
     } finally {
       setIsLoading(false);
     }
@@ -98,7 +93,7 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
       <div className="bg-white p-6 rounded-2xl shadow-xl w-[640px] max-h-[540px] border border-gray-100 flex flex-col">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold text-gray-800">
-            Search by Name
+            Search by Name (Location: {LocationID})
           </h2>
           <button
             onClick={onClose}
@@ -133,8 +128,10 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
                   <div className="font-semibold">{item.itemName}</div>
                   <div className="text-xs text-gray-600">
                     Location:{" "}
-                    <span className="text-lg font-bold">{item.locationID}</span>{" "}
-                    | Rs: {item.itemUnitPrice} | Qty: {item.quantity}
+                    <span className="text-lg font-bold">
+                      {item.LocationID || item.locationID}
+                    </span>{" "}
+                    | Rs: {item.itemUnitPrice}
                   </div>
                 </div>
               ))}

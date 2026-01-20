@@ -203,7 +203,7 @@ export const checkRegisterClosed = async (deviceId) => {
 export const getAllLocations = async () => {
   try {
     console.log("Fetching all locations");
-    const response = await httpClient.get("/location/getAll", true);
+    const response = await httpClient.get("/inventory/getAllLocations", true);
     console.log("getAllLocations response:", response);
     return response;
   } catch (error) {
