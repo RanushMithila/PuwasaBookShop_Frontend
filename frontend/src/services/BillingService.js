@@ -11,7 +11,7 @@ export const createBill = async (billingData) => {
     const response = await httpClient.post(
       "/billing/billing",
       billingData,
-      true
+      true,
     );
     console.log("Create bill response:", response);
     return response;
@@ -32,7 +32,7 @@ export const addBillDetails = async (detailsData) => {
     const response = await httpClient.post(
       "/billing/details",
       detailsData,
-      true
+      true,
     );
     console.log("Add bill details response:", response);
     return response;
@@ -71,7 +71,7 @@ export const completeBill = async (billId, paymentData) => {
     const response = await httpClient.post(
       `/billing/billing/complete/${billId}`,
       paymentData,
-      true
+      true,
     );
     console.log("Complete bill response:", response);
     return response;
@@ -92,7 +92,7 @@ export const getItemByBarcode = async (barcode, locationId) => {
     console.log(`Getting item by barcode: ${barcode}, location: ${locationId}`);
     const response = await httpClient.get(
       `/inventory/getItem/${barcode}/${locationId}`,
-      false
+      false,
     );
     console.log("Get item by barcode response:", response);
     return response;
@@ -111,11 +111,11 @@ export const getItemByBarcode = async (barcode, locationId) => {
 export const getItemQuantity = async (barcode, locationId) => {
   try {
     console.log(
-      `Getting item quantity by barcode: ${barcode}, location: ${locationId}`
+      `Getting item quantity by barcode: ${barcode}, location: ${locationId}`,
     );
     const response = await httpClient.get(
       `/inventory/getItemQTY/${barcode}/${locationId}`,
-      false
+      false,
     );
     console.log("Get item quantity response:", response);
     return response;
@@ -135,7 +135,7 @@ export const cancelBill = async (billId) => {
     console.log(`Cancelling bill ${billId}`);
     const response = await httpClient.delete(
       `/billing/billing/cancel/${billId}`,
-      true
+      true,
     );
     console.log("Cancel bill response:", response);
     return response;
@@ -155,7 +155,7 @@ export const getTemporaryBills = async (locationId) => {
     console.log(`Getting temporary bills for location ${locationId}`);
     const response = await httpClient.get(
       `/billing/tempbills/${locationId}`,
-      true
+      true,
     );
     console.log("Get temporary bills response:", response);
     return response;
@@ -175,7 +175,7 @@ export const getInventory = async (locationId) => {
     console.log(`Getting inventory for location: ${locationId}`);
     const response = await httpClient.get(
       `/inventory/getAll/${locationId}`,
-      true
+      true,
     );
     console.log("Get inventory response:", response);
     return response;
@@ -195,8 +195,8 @@ export const searchItemsByName = async (name, locationId) => {
   try {
     console.log(`Searching items by name: ${name}, location: ${locationId}`);
     const response = await httpClient.get(
-      `/inventory/searchByName/${name}/${locationId}`,
-      true
+      `/inventory/getItemName/${name}/${locationId}`,
+      true,
     );
     console.log("Search items by name response:", response);
     return response;

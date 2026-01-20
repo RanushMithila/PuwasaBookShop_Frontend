@@ -26,6 +26,8 @@ import {
   checkRegisterOpen,
   setOpeningAmount,
 } from "../services/CashRegisterService";
+import { getUsers } from "../services/UserService";
+import { getCustomerByPhone } from "../services/CustomerService";
 
 import AlertModal from "../components/AlertModal";
 
@@ -40,6 +42,10 @@ const BillingPage = () => {
 
   // Auth store (tokens and device ID)
   const accessToken = useAuthStore((s) => s.accessToken);
+  const user = useAuthStore((s) => s.user);
+  const location = useAuthStore((s) => s.location);
+  const storedLocationID = useAuthStore((s) => s.LocationID);
+  const LocationID = storedLocationID ? parseInt(storedLocationID, 10) : 1; // Fallback to 1 for safety
   const deviceId = useAuthStore((s) => s.deviceId);
 
   // UI state
@@ -51,8 +57,17 @@ const BillingPage = () => {
   const [isOpeningAmountLoading, setIsOpeningAmountLoading] = useState(false);
   const [registerSessionId, setRegisterSessionId] = useState(null);
   const [temporaryBills, setTemporaryBills] = useState([]);
+  const [helpers, setHelpers] = useState([]);
+  const [selectedHelperID, setSelectedHelperID] = useState(null);
+  const [helperSearchTerm, setHelperSearchTerm] = useState("");
+  const [showHelperSuggestions, setShowHelperSuggestions] = useState(false);
+  const [helperHighlightIndex, setHelperHighlightIndex] = useState(-1);
   const [loadingTempBills, setLoadingTempBills] = useState(false);
   const [tempBillsError, setTempBillsError] = useState("");
+  const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
+  const [customerResults, setCustomerResults] = useState([]);
+  const [isSearchingCustomer, setIsSearchingCustomer] = useState(false);
+  const [customerHighlightIndex, setCustomerHighlightIndex] = useState(-1);
 
   // Alert Modal State
   const [alertConfig, setAlertConfig] = useState({
@@ -65,6 +80,7 @@ const BillingPage = () => {
   // Customer
   const [customerName, setCustomerName] = useState("Customer");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [selectedCustomerID, setSelectedCustomerID] = useState(1);
   const locationName = "Polonnaruwa";
 
   // Search / item code and suggestions
@@ -75,10 +91,12 @@ const BillingPage = () => {
   // Payment
   const [cashPayAmount, setCashPayAmount] = useState("0.00");
   const [cardAmount, setCardAmount] = useState("0.00");
+  const [chequeAmount, setChequeAmount] = useState("0.00");
   const [creditBalance, setCreditBalance] = useState(0);
   const [lastBillBalance, setLastBillBalance] = useState(0); // Persistent last bill balance
   const [userEditedCash, setUserEditedCash] = useState(false);
   const [userEditedCard, setUserEditedCard] = useState(false);
+  const [userEditedCheque, setUserEditedCheque] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false); // API actions (save/complete)
   const [isPrinting, setIsPrinting] = useState(false); // External print/python action
 
@@ -86,6 +104,9 @@ const BillingPage = () => {
   const itemCodeRef = useRef();
   const cashInputRef = useRef();
   const cardInputRef = useRef();
+  const chequeInputRef = useRef();
+  const helperSearchRef = useRef();
+  const customerSearchRef = useRef();
   const saveButtonRef = useRef();
   const printButtonRef = useRef();
   const rowRefs = useRef(new Map());
@@ -148,6 +169,32 @@ const BillingPage = () => {
 
   const loginRole = extractRole(accessToken);
 
+  // Filtered helpers for searchable dropdown
+  const filteredHelpers = helpers.filter((h) => {
+    const fullName = `${h.firstname} ${h.lastname}`.toLowerCase();
+    return fullName.includes(helperSearchTerm.toLowerCase());
+  });
+
+  // Click outside to close helper suggestions
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        helperSearchRef.current &&
+        !helperSearchRef.current.contains(event.target)
+      ) {
+        setShowHelperSuggestions(false);
+      }
+      if (
+        customerSearchRef.current &&
+        !customerSearchRef.current.contains(event.target)
+      ) {
+        setShowCustomerSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // Extract cashier name from token
   const getCashierName = () => {
     if (!accessToken) return "";
@@ -163,6 +210,123 @@ const BillingPage = () => {
     const t = setTimeout(() => itemCodeRef.current?.focus(), 0);
     return () => clearTimeout(t);
   }, []);
+
+  // Fetch users/helpers on mount
+  useEffect(() => {
+    const fetchHelpers = async () => {
+      try {
+        const resp = await getUsers();
+        if (resp && resp.status === true && Array.isArray(resp.data)) {
+          setHelpers(resp.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch helpers:", err);
+      }
+    };
+    fetchHelpers();
+  }, []);
+
+  // Helper functions
+  const formatPhoneNumber = (value) => {
+    const digits = value.replace(/\D/g, "").slice(0, 10);
+    let formatted = "";
+    if (digits.length > 0) formatted += digits.slice(0, 3);
+    if (digits.length > 3) formatted += " " + digits.slice(3, 6);
+    if (digits.length > 6) formatted += " " + digits.slice(6, 10);
+    return formatted;
+  };
+
+  // Customer phone search logic
+  useEffect(() => {
+    const rawDigits = customerPhone.replace(/\D/g, "");
+
+    // Protection against race conditions (stale requests)
+    let isActive = true;
+
+    if (rawDigits.length >= 5) {
+      const fetchCustomer = async () => {
+        console.log(`[CustomerSearch] Fetching for digits: ${rawDigits}`);
+        setIsSearchingCustomer(true);
+        // setShowCustomerSuggestions(true); // Moved to onChange/onFocus to prevent reappearing after selection
+        try {
+          const resp = await getCustomerByPhone(rawDigits);
+
+          if (!isActive) {
+            console.log(
+              `[CustomerSearch] Ignoring stale response for: ${rawDigits}`,
+            );
+            return;
+          }
+
+          console.log("[CustomerSearch] Full Response:", resp);
+
+          if (resp && resp.data) {
+            let customers = [];
+            // Handle array or object, but ignore empty objects
+            if (Array.isArray(resp.data)) {
+              customers = resp.data.filter(
+                (c) => c && Object.keys(c).length > 0,
+              );
+            } else if (
+              typeof resp.data === "object" &&
+              Object.keys(resp.data).length > 0
+            ) {
+              customers = [resp.data];
+            }
+
+            console.log("[CustomerSearch] Processed Customers:", customers);
+
+            // Sort by first name
+            customers.sort((a, b) =>
+              (a.firstname || "").localeCompare(b.firstname || ""),
+            );
+            setCustomerResults(customers);
+
+            // If pinpointed exactly, we auto-fill the NAME but we KEEP THE LIST OPEN
+            if (
+              customers.length === 1 &&
+              customers[0].phone === rawDigits &&
+              rawDigits.length === 10
+            ) {
+              console.log(
+                "[CustomerSearch] Exact match found, auto-filling name.",
+              );
+              setCustomerName(customers[0].firstname || "Customer");
+              setSelectedCustomerID(customers[0].customerid || 1);
+              setShowCustomerSuggestions(false);
+            }
+          } else {
+            console.log(
+              "[CustomerSearch] Response received but no data field found",
+            );
+            setCustomerResults([]);
+          }
+        } catch (err) {
+          if (!isActive) return;
+          console.error("[CustomerSearch] Error:", err);
+          setCustomerResults([]);
+        } finally {
+          if (isActive) {
+            setIsSearchingCustomer(false);
+          }
+        }
+      };
+
+      const timer = setTimeout(fetchCustomer, 300);
+      return () => {
+        clearTimeout(timer);
+        isActive = false;
+      };
+    } else {
+      setCustomerResults([]);
+      setShowCustomerSuggestions(false);
+      setIsSearchingCustomer(false);
+      if (customerPhone.length === 0) {
+        setCustomerName("Customer");
+        setSelectedCustomerID(1);
+      }
+    }
+  }, [customerPhone]);
 
   // Check if cash register is open on mount
   useEffect(() => {
@@ -293,7 +457,7 @@ const BillingPage = () => {
 
   const searchBarcode = async (code) => {
     try {
-      const resp = await getItemByBarcode(code, 1);
+      const resp = await getItemByBarcode(code, LocationID);
       if (resp && resp.status === true && Array.isArray(resp.data)) {
         setSuggestions(resp.data);
         setHighlightIndex(0);
@@ -303,6 +467,19 @@ const BillingPage = () => {
     } catch (err) {
       console.error("Barcode search failed:", err);
       setSuggestions([]);
+      if (
+        err.message?.includes("500") ||
+        err.message?.includes("Failed to fetch") ||
+        err.message?.includes("network")
+      ) {
+        setAlertConfig({
+          isOpen: true,
+          title: "Connection Error",
+          message:
+            "Could not reach the server. Please check your internet or contact technical support.",
+          type: "error",
+        });
+      }
     }
   };
 
@@ -317,8 +494,8 @@ const BillingPage = () => {
       const currentQty = existingItem ? existingItem.QTY : 0;
       const requestQty = currentQty + 1;
       // Verify with API
-      // LocationID is hardcoded as 1 per current context
-      const resp = await getItemQuantity(item.barcode, 1);
+      // LocationID is retrieved from AuthStore
+      const resp = await getItemQuantity(item.barcode, LocationID);
 
       if (
         resp &&
@@ -428,9 +605,10 @@ const BillingPage = () => {
       let billIdToUse = currentBillId;
       if (!billIdToUse) {
         const createResp = await createBill({
-          LocationID: 1,
-          CustomerID: 1,
-          CashierID: 1,
+          LocationID: LocationID,
+          CustomerID: selectedCustomerID || 1,
+          CashierID: user?.id || 1,
+          HelperID: selectedHelperID,
           RegisterID: deviceId,
         });
         if (!(createResp && createResp.status === true && createResp.data)) {
@@ -480,6 +658,7 @@ const BillingPage = () => {
       const payment = {
         CashAmount: parseFloat(cashPayAmount) || 0,
         CardAmount: parseFloat(cardAmount) || 0,
+        ChequeAmount: parseFloat(chequeAmount) || 0,
       };
       const completeResp = await completeBill(billIdToUse, payment);
       if (completeResp && completeResp.status === true) {
@@ -521,6 +700,7 @@ const BillingPage = () => {
               Discount: Number(totalDiscount || 0),
               CashAmount: parseFloat(cashPayAmount) || 0,
               CardAmount: parseFloat(cardAmount) || 0,
+              ChequeAmount: parseFloat(chequeAmount) || 0,
               Balance: Number(completeResp.data || 0),
               Details: selectedItems.map((it) => ({
                 ItemName:
@@ -561,8 +741,12 @@ const BillingPage = () => {
         setCustomerPhone("");
         setCashPayAmount("0.00");
         setCardAmount("0.00");
+        setChequeAmount("0.00");
         setUserEditedCash(false);
         setUserEditedCard(false);
+        setUserEditedCheque(false);
+        setSelectedHelperID(null);
+        setHelperSearchTerm("");
 
         // Focus Print Invoice button so user can press Enter to print
         // (focus was already set at start of save, but ensure it stays there)
@@ -599,9 +783,10 @@ const BillingPage = () => {
 
       // Create a bill first
       const createResp = await createBill({
-        LocationID: 1,
-        CustomerID: 1,
-        CashierID: 1,
+        LocationID: LocationID,
+        CustomerID: selectedCustomerID || 1,
+        CashierID: user?.id || 1,
+        HelperID: selectedHelperID,
         RegisterID: deviceId,
       });
       if (!(createResp && createResp.status === true && createResp.data)) {
@@ -717,6 +902,7 @@ const BillingPage = () => {
         // Include payment amounts so the main process can write them to last_bill.json
         CashAmount: parseFloat(cashPayAmount) || 0,
         CardAmount: parseFloat(cardAmount) || 0,
+        ChequeAmount: parseFloat(chequeAmount) || 0,
         Balance: Number(creditBalance || 0),
         Details: selectedItems.map((it) => ({
           ItemName: it.itemName || it.ItemName || it.name || "Item",
@@ -759,8 +945,11 @@ const BillingPage = () => {
       setCustomerPhone("");
       setCashPayAmount("0.00");
       setCardAmount("0.00");
+      setChequeAmount("0.00");
       setCreditBalance(0);
       setCurrentBillId(null);
+      setSelectedHelperID(null);
+      setHelperSearchTerm("");
       // Unlock inputs after successful print so user can continue
       setInputsLocked(false);
       // Focus item code for next transaction
@@ -834,7 +1023,7 @@ const BillingPage = () => {
     setLoadingTempBills(true);
     setTempBillsError("");
     try {
-      const resp = await getTemporaryBills(1); // LocationID hardcoded as 1 per current flows
+      const resp = await getTemporaryBills(LocationID);
       if (resp && resp.status === true && Array.isArray(resp.data)) {
         // Replace local list with server truth; sort newest first by createdDateTime then BillID desc
         const getTs = (x) => {
@@ -914,10 +1103,16 @@ const BillingPage = () => {
     // Reset local payment inputs and balances
     setCashPayAmount("0.00");
     setCardAmount("0.00");
+    setChequeAmount("0.00");
     setCreditBalance(0);
     // Reset local customer inputs as well
     setCustomerName("Customer");
     setCustomerPhone("");
+    setCustomerResults([]);
+    setShowCustomerSuggestions(false);
+    setSelectedCustomerID(1);
+    setSelectedHelperID(null);
+    setHelperSearchTerm("");
     // Focus item code for convenience
     setTimeout(() => itemCodeRef.current?.focus(), 0);
   };
@@ -1003,14 +1198,188 @@ const BillingPage = () => {
               onChange={(e) => setCustomerName(e.target.value)}
             />
             <label className="text-sm">Phone</label>
-            <input
-              className="border px-2 py-1 w-44"
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-            />
+            <div className="relative" ref={customerSearchRef}>
+              <input
+                className="border px-2 py-1 w-44 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                value={customerPhone}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomerPhone(formatPhoneNumber(val));
+                  const raw = val.replace(/\D/g, "");
+                  if (raw.length >= 5) {
+                    setShowCustomerSuggestions(true);
+                    setCustomerHighlightIndex(0);
+                  } else {
+                    setShowCustomerSuggestions(false);
+                    setCustomerHighlightIndex(-1);
+                  }
+                }}
+                onFocus={() => {
+                  const raw = customerPhone.replace(/\D/g, "");
+                  if (raw.length >= 5) {
+                    setShowCustomerSuggestions(true);
+                    setCustomerHighlightIndex(-1);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (!showCustomerSuggestions || customerResults.length === 0)
+                    return;
+
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setCustomerHighlightIndex((prev) =>
+                      prev < customerResults.length - 1 ? prev + 1 : prev,
+                    );
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setCustomerHighlightIndex((prev) =>
+                      prev > 0 ? prev - 1 : 0,
+                    );
+                  } else if (e.key === "Enter") {
+                    if (
+                      customerHighlightIndex >= 0 &&
+                      customerHighlightIndex < customerResults.length
+                    ) {
+                      e.preventDefault();
+                      const c = customerResults[customerHighlightIndex];
+                      setCustomerPhone(formatPhoneNumber(c.phone));
+                      setCustomerName(c.firstname || "Customer");
+                      setSelectedCustomerID(c.customerid);
+                      setShowCustomerSuggestions(false);
+                      setCustomerHighlightIndex(-1);
+                    }
+                  } else if (e.key === "Escape") {
+                    setShowCustomerSuggestions(false);
+                    setCustomerHighlightIndex(-1);
+                  }
+                }}
+              />
+              {showCustomerSuggestions && (
+                <div className="absolute left-0 right-0 bg-white border mt-1 z-50 max-h-48 overflow-y-auto shadow-lg rounded-md min-w-[200px]">
+                  {console.log(
+                    "[CustomerSearch] Rendering UI. show:",
+                    showCustomerSuggestions,
+                    "loading:",
+                    isSearchingCustomer,
+                    "results:",
+                    customerResults,
+                  )}
+                  {isSearchingCustomer ? (
+                    <div className="p-2 text-gray-500 text-sm flex items-center gap-2">
+                      <span className="inline-block h-4 w-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                      Searching...
+                    </div>
+                  ) : customerResults.length > 0 ? (
+                    customerResults.map((c, idx) => (
+                      <div
+                        key={c.customerid || idx}
+                        className={`p-2 cursor-pointer hover:bg-emerald-50 text-sm border-b last:border-b-0 ${
+                          idx === customerHighlightIndex ? "bg-emerald-100" : ""
+                        }`}
+                        onClick={() => {
+                          console.log("[CustomerSearch] Selected:", c);
+                          setCustomerPhone(formatPhoneNumber(c.phone));
+                          setCustomerName(c.firstname || "Customer");
+                          setSelectedCustomerID(c.customerid);
+                          setShowCustomerSuggestions(false);
+                          setCustomerHighlightIndex(-1);
+                        }}
+                      >
+                        <div className="font-semibold">
+                          {c.firstname} {c.lastname}
+                        </div>
+                        <div className="text-xs text-gray-500">{c.phone}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-2 text-gray-500 text-sm">
+                      No customer found
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <label className="text-sm ml-2">Cashier</label>
             <div className="border px-2 py-1 min-w-[100px] bg-gray-50 text-sm">
               {cashierName}
+            </div>
+            <label className="text-sm ml-2">Helper</label>
+            <div className="relative" ref={helperSearchRef}>
+              <input
+                className="border px-2 py-1 text-sm rounded focus:outline-none focus:ring-1 focus:ring-emerald-500 w-40"
+                placeholder="Search Helper"
+                value={helperSearchTerm}
+                onFocus={() => {
+                  if (helperSearchTerm.trim() !== "") {
+                    setShowHelperSuggestions(true);
+                    setHelperHighlightIndex(-1);
+                  }
+                }}
+                onChange={(e) => {
+                  setHelperSearchTerm(e.target.value);
+                  setShowHelperSuggestions(true);
+                  setHelperHighlightIndex(0);
+                  // If user clears the search, also clear the selected ID
+                  if (!e.target.value) setSelectedHelperID(null);
+                }}
+                onKeyDown={(e) => {
+                  if (!showHelperSuggestions || filteredHelpers.length === 0)
+                    return;
+
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setHelperHighlightIndex((prev) =>
+                      prev < filteredHelpers.length - 1 ? prev + 1 : prev,
+                    );
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setHelperHighlightIndex((prev) =>
+                      prev > 0 ? prev - 1 : 0,
+                    );
+                  } else if (e.key === "Enter") {
+                    if (
+                      helperHighlightIndex >= 0 &&
+                      helperHighlightIndex < filteredHelpers.length
+                    ) {
+                      e.preventDefault();
+                      const h = filteredHelpers[helperHighlightIndex];
+                      setSelectedHelperID(h.UserID);
+                      setHelperSearchTerm(`${h.firstname} ${h.lastname}`);
+                      setShowHelperSuggestions(false);
+                      setHelperHighlightIndex(-1);
+                    }
+                  } else if (e.key === "Escape") {
+                    setShowHelperSuggestions(false);
+                    setHelperHighlightIndex(-1);
+                  }
+                }}
+              />
+              {showHelperSuggestions && helperSearchTerm.trim() !== "" && (
+                <div className="absolute left-0 right-0 bg-white border mt-1 z-50 max-h-48 overflow-y-auto shadow-lg rounded-md">
+                  {filteredHelpers.length > 0 ? (
+                    filteredHelpers.map((h, idx) => (
+                      <div
+                        key={h.UserID}
+                        className={`p-2 cursor-pointer hover:bg-emerald-50 text-sm border-b last:border-b-0 ${
+                          idx === helperHighlightIndex ? "bg-emerald-100" : ""
+                        }`}
+                        onClick={() => {
+                          setSelectedHelperID(h.UserID);
+                          setHelperSearchTerm(`${h.firstname} ${h.lastname}`);
+                          setShowHelperSuggestions(false);
+                          setHelperHighlightIndex(-1);
+                        }}
+                      >
+                        {h.firstname} {h.lastname}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-2 text-gray-500 text-sm">
+                      No staff found
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1223,13 +1592,44 @@ const BillingPage = () => {
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
+                // Move focus to Cheque amount input
+                e.preventDefault();
+                chequeInputRef.current?.focus();
+                chequeInputRef.current?.select?.();
+              }
+            }}
+            placeholder="0.00"
+            ref={cardInputRef}
+            readOnly={inputsLocked}
+          />
+        </div>
+
+        <div className="space-y-3">
+          <div className="text-sm font-semibold text-gray-700">
+            Cheque Amount
+          </div>
+          <input
+            className="w-full border px-4 py-3 text-base rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            value={chequeAmount}
+            onChange={(e) => {
+              setUserEditedCheque(true);
+              if (!inputsLocked) setChequeAmount(e.target.value);
+            }}
+            onFocus={(e) => e.target.select()}
+            onBlur={(e) => {
+              if (e.target.value && !isNaN(parseFloat(e.target.value))) {
+                setChequeAmount(parseFloat(e.target.value).toFixed(2));
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
                 // Move focus to Save button (do not click)
                 e.preventDefault();
                 saveButtonRef.current?.focus();
               }
             }}
             placeholder="0.00"
-            ref={cardInputRef}
+            ref={chequeInputRef}
             readOnly={inputsLocked}
           />
         </div>

@@ -38,7 +38,7 @@ export const getRegisterByDeviceId = async (deviceId) => {
     console.log("Checking register for device:", deviceId);
     const response = await httpClient.get(
       `/cashregister/get/${deviceId}`,
-      true
+      true,
     );
     console.log("getRegisterByDeviceId response:", response);
     return response;
@@ -65,7 +65,7 @@ export const createRegister = async (locationId, registerName, deviceId) => {
         RegisterName: registerName,
         DeviceID: deviceId,
       },
-      true
+      true,
     );
     console.log("createRegister response:", response);
     return response;
@@ -85,7 +85,7 @@ export const checkRegisterOpen = async (deviceId) => {
     console.log("Checking if register is open for device:", deviceId);
     const response = await httpClient.get(
       `/cashregister/isOpen/${deviceId}`,
-      true
+      true,
     );
     console.log("checkRegisterOpen response:", response);
     return response;
@@ -110,7 +110,7 @@ export const setOpeningAmount = async (deviceId, openingAmount) => {
         DeviceID: deviceId,
         OpeningAmount: openingAmount,
       },
-      true
+      true,
     );
     console.log("setOpeningAmount response:", response);
     return response;
@@ -137,7 +137,7 @@ export const setClosingAmount = async (deviceId, closingAmount, notes) => {
         ClosingAmount: closingAmount,
         notes: notes,
       },
-      true
+      true,
     );
     console.log("setClosingAmount response:", response);
     return response;
@@ -166,7 +166,7 @@ export const cashInOut = async (deviceId, amount, type, reason) => {
         Type: type,
         Reason: reason,
       },
-      true
+      true,
     );
     console.log("cashInOut response:", response);
     return response;
@@ -186,7 +186,7 @@ export const checkRegisterClosed = async (deviceId) => {
     console.log("Checking if register is closed for device:", deviceId);
     const response = await httpClient.get(
       `/cashregister/isClosed/${deviceId}`,
-      false
+      false,
     );
     console.log("checkRegisterClosed response:", response);
     return response;
@@ -203,11 +203,27 @@ export const checkRegisterClosed = async (deviceId) => {
 export const getAllLocations = async () => {
   try {
     console.log("Fetching all locations");
-    const response = await httpClient.get("/location/getAll", true);
+    const response = await httpClient.get("/inventory/getAllLocations", true);
     console.log("getAllLocations response:", response);
     return response;
   } catch (error) {
     console.error("getAllLocations failed:", error);
+    throw error;
+  }
+};
+
+/**
+ * Gets all cash registers.
+ * @returns {Promise<object>} API response with registers array
+ */
+export const listCashRegisters = async () => {
+  try {
+    console.log("Fetching all cash registers");
+    const response = await httpClient.get("/cashregister/list", true);
+    console.log("listCashRegisters response:", response);
+    return response;
+  } catch (error) {
+    console.error("listCashRegisters failed:", error);
     throw error;
   }
 };

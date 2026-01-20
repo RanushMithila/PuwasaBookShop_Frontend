@@ -8,12 +8,15 @@ import React, {
 import SearchResults from "./SearchResults";
 import { searchItemsByName } from "../services/BillingService";
 import { useSearch } from "../contexts/SearchContext";
+import useAuthStore from "../store/AuthStore";
 
 const SearchBar = forwardRef(
   (
     { onItemSelect, placeholder = "Search books by title, author, ISBN..." },
-    ref
+    ref,
   ) => {
+    const storedLocationID = useAuthStore((s) => s.LocationID);
+    const LocationID = storedLocationID ? parseInt(storedLocationID, 10) : 1;
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -91,7 +94,7 @@ const SearchBar = forwardRef(
 
       try {
         // Use the actual inventory service
-        const response = await searchItemsByName(query, 1);
+        const response = await searchItemsByName(query, LocationID);
 
         console.log("API Response:", response);
 
@@ -126,7 +129,7 @@ const SearchBar = forwardRef(
           barcode: item.barcode,
           category: `Category ${item.itemCategory}`,
           image_url: item.itemImage || null,
-          location_id: item.locationID,
+          location_id: item.LocationID || item.locationID,
           inventory_id: item.inventoryID,
           created_date: item.createdDateTime,
           updated_date: item.updatedDateTime,
@@ -178,7 +181,7 @@ const SearchBar = forwardRef(
             book.title.toLowerCase().includes(query.toLowerCase()) ||
             book.author.toLowerCase().includes(query.toLowerCase()) ||
             book.isbn.includes(query) ||
-            book.barcode.includes(query)
+            book.barcode.includes(query),
         );
 
         setSearchResults(mockResults);
@@ -302,7 +305,7 @@ const SearchBar = forwardRef(
         )}
       </div>
     );
-  }
+  },
 );
 
 SearchBar.displayName = "SearchBar";
