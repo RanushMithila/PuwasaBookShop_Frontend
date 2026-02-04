@@ -64,6 +64,7 @@ function runPythonPrint(event, receiptData) {
           JSON.stringify(billJson, null, 2),
           "utf8",
         );
+        console.log("printHandler: last_bill.json updated");
         writeSuccess = true;
         try {
           const stat = await fs.promises.stat(outJson);
@@ -106,7 +107,7 @@ function runPythonPrint(event, receiptData) {
   }
 
   return new Promise((resolve) => {
-    console.log("Invoking print.exe:", exePath, outJson);
+    console.log("printHandler: Printing starts, invoking print.exe:", exePath, outJson);
     const execOptions = {
       cwd: printingDir,
       windowsHide: true,

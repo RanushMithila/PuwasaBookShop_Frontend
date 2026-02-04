@@ -8,12 +8,19 @@ const BillingItemRow = ({
   onFocusItemCode,
 }) => {
   const [quantity, setQuantity] = useState(item.QTY || 1);
-  const [discount, setDiscount] = useState(item.Discount || 0);
+  // perItemDiscount: the numeric value (per single item)
+  const [perItemDiscount, setPerItemDiscount] = useState(0);
+  // discountInputValue: the raw string shown in the input while typing
+  const [discountInputValue, setDiscountInputValue] = useState("0.00");
+  // isDiscountFocused: tracks if discount input is focused (to show raw vs formatted)
+  const [isDiscountFocused, setIsDiscountFocused] = useState(false);
+  // totalDiscount: the calculated discount (perItemDiscount × quantity) used for amount display
+  const [totalDiscount, setTotalDiscount] = useState(item.Discount || 0);
   const updateItemQuantity = useBillingStore(
-    (state) => state.updateItemQuantity
+    (state) => state.updateItemQuantity,
   );
   const updateItemDiscount = useBillingStore(
-    (state) => state.updateItemDiscount
+    (state) => state.updateItemDiscount,
   );
   const qtyRef = useRef(null);
   const discountRef = useRef(null);
@@ -28,14 +35,27 @@ const BillingItemRow = ({
     const qty = Math.max(1, parseInt(newQuantity) || 1);
     setQuantity(qty);
     updateItemQuantity(item.inventoryID, qty);
+    // Recalculate total discount when quantity changes
+    if (perItemDiscount > 0) {
+      const newTotalDiscount = parseFloat((perItemDiscount * qty).toFixed(2));
+      setTotalDiscount(newTotalDiscount);
+      updateItemDiscount(item.inventoryID, newTotalDiscount);
+    }
   };
 
-  const handleDiscountChange = (newDiscount) => {
+  const handleDiscountInputChange = (newDiscount) => {
+    // Store raw input value while typing
+    setDiscountInputValue(newDiscount);
+    // Parse and store numeric value
     const raw = parseFloat(newDiscount);
     const disc = isNaN(raw) ? 0 : Math.max(0, raw);
-    const rounded = parseFloat(disc.toFixed(2));
-    setDiscount(rounded);
-    updateItemDiscount(item.inventoryID, rounded);
+    setPerItemDiscount(disc);
+  };
+
+  const handleDiscountBlur = () => {
+    // Format to 2 decimal places when leaving the field
+    setDiscountInputValue(perItemDiscount.toFixed(2));
+    setIsDiscountFocused(false);
   };
 
   const handleDoubleClick = () => {
@@ -44,9 +64,9 @@ const BillingItemRow = ({
     }
   };
 
-  // Calculate amount after discount
+  // Calculate amount after total discount (per-item × quantity)
   const baseAmount = (item.itemUnitPrice || 0) * quantity;
-  const discountAmount = Math.min(discount, baseAmount);
+  const discountAmount = Math.min(totalDiscount, baseAmount);
   const finalAmount = baseAmount - discountAmount;
 
   return (
@@ -111,23 +131,40 @@ const BillingItemRow = ({
         )}
       </div>
 
-      {/* Discount (absolute) column */}
+      {/* Discount (per-item) column */}
       <div className="flex items-center">
         <span className="text-xs mr-1">Rs:</span>
         <input
           type="number"
           min="0"
           step="0.01"
-          value={discount}
-          onChange={(e) => handleDiscountChange(e.target.value)}
+          value={discountInputValue}
+          onChange={(e) => handleDiscountInputChange(e.target.value)}
           className="w-20 px-2 py-1 border rounded text-center focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
           placeholder="0.00"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.target.select();
+          }}
+          onFocus={(e) => {
+            setIsDiscountFocused(true);
+            e.target.select();
+          }}
+          onBlur={handleDiscountBlur}
           onDoubleClick={(e) => e.stopPropagation()}
           ref={discountRef}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
+              // Multiply the entered per-item discount by quantity
+              // e.g., if user enters 10 and qty is 5, the total discount becomes 50
+              // Input stays at 10.00, but amount shows -Rs: 50.00
+              const perItem = parseFloat(e.target.value) || 0;
+              const total = parseFloat((perItem * quantity).toFixed(2));
+              setTotalDiscount(total);
+              updateItemDiscount(item.inventoryID, total);
+              // Format the input to 2 decimal places
+              setDiscountInputValue(perItem.toFixed(2));
               // After discount, focus back to the Item Code input to continue adding items
               if (typeof onFocusItemCode === "function") {
                 onFocusItemCode();

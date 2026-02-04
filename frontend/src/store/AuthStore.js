@@ -7,6 +7,7 @@ const useAuthStore = create(
       // State
       user: null, // Will hold { id, name, role }
       location: null, // Will hold { id, name }
+      LocationID: null,
       isAuthenticated: false,
       accessToken: null, // JWT access token
       refreshToken: null, // JWT refresh token
@@ -15,11 +16,22 @@ const useAuthStore = create(
       // Actions
       setSession: (sessionData) => {
         // Expects sessionData to contain user and location objects from the API
+        const locId =
+          sessionData.LocationID ||
+          sessionData.location?.id ||
+          sessionData.locationID ||
+          null;
         set({
           user: sessionData.user,
           location: sessionData.location,
+          LocationID: locId ? parseInt(locId, 10) : null,
           isAuthenticated: true,
         });
+      },
+
+      // Set Location ID explicitly
+      setLocationID: (id) => {
+        set({ LocationID: id });
       },
 
       // Set authentication tokens
@@ -60,8 +72,8 @@ const useAuthStore = create(
     {
       name: "auth-session-storage", // Unique name for localStorage key
       storage: createJSONStorage(() => localStorage), // Use localStorage for persistence
-    }
-  )
+    },
+  ),
 );
 
 export default useAuthStore;
