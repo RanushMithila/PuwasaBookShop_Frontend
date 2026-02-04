@@ -654,26 +654,61 @@ const BillingPage = () => {
       // Removed interim last_bill.json write (WriteOnly) to reduce redundant IPC overhead.
       // The final save after completion will handle the state persistence.
 
-      // Complete billing and show returned change
+      // Complete billing and show returned change (with retry logic)
       const payment = {
         CashAmount: parseFloat(cashPayAmount) || 0,
         CardAmount: parseFloat(cardAmount) || 0,
         ChequeAmount: parseFloat(chequeAmount) || 0,
       };
-      const completeResp = await completeBill(billIdToUse, payment);
-      if (completeResp && completeResp.status === true) {
-        setCreditBalance(completeResp.data || 0);
-      } else {
+
+      const MAX_COMPLETE_ATTEMPTS = 3;
+      let completeResp = null;
+      let lastError = null;
+
+      for (let attempt = 1; attempt <= MAX_COMPLETE_ATTEMPTS; attempt++) {
+        try {
+          console.log(
+            `[CompleteBill] Attempt ${attempt} of ${MAX_COMPLETE_ATTEMPTS}`,
+          );
+          completeResp = await completeBill(billIdToUse, payment);
+
+          if (completeResp && completeResp.status === true) {
+            setCreditBalance(completeResp.data || 0);
+            lastError = null;
+            break; // Success, exit retry loop
+          } else {
+            // API returned but with error status
+            lastError =
+              completeResp?.error_message ||
+              completeResp?.message ||
+              JSON.stringify(completeResp);
+            console.warn(
+              `[CompleteBill] Attempt ${attempt} failed:`,
+              lastError,
+            );
+          }
+        } catch (err) {
+          lastError = err.message || "Unknown error";
+          console.error(`[CompleteBill] Attempt ${attempt} threw error:`, err);
+        }
+
+        // If not the last attempt, wait briefly before retrying
+        if (attempt < MAX_COMPLETE_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+
+      // If all attempts failed, log out the user
+      if (lastError) {
         setAlertConfig({
           isOpen: true,
-          title: "Completion Error",
-          message:
-            "Failed to complete billing: " +
-            (completeResp?.error_message ||
-              completeResp?.message ||
-              JSON.stringify(completeResp)),
+          title: "Completion Failed",
+          message: `Failed to complete billing after ${MAX_COMPLETE_ATTEMPTS} attempts. You will be logged out.\n\nError: ${lastError}`,
           type: "error",
         });
+        // Clear session to force logout
+        useAuthStore.getState().clearSession();
+        return;
       }
       // After a successful Save (complete billing), we DO NOT clear the UI.
       // The user wants to see the details. Clearing happens on Print or Clear button.
@@ -715,8 +750,10 @@ const BillingPage = () => {
               })),
               WriteOnly: true,
             };
+            const now3 = new Date();
+            const time3 = `${now3.getHours().toString().padStart(2, '0')}:${now3.getMinutes().toString().padStart(2, '0')}:${now3.getSeconds().toString().padStart(2, '0')}.${now3.getMilliseconds().toString().padStart(3, '0')}`;
             console.log(
-              "Updating final last_bill.json with balance:",
+              `[${time3}] Updating final last_bill.json with balance:`,
               finalPayload.Balance,
             );
             try {
@@ -859,7 +896,9 @@ const BillingPage = () => {
       // Unlock inputs as soon as Print is pressed (they were locked after Save)
       setInputsLocked(false);
 
-      console.log("handlePrintInvoice: clicked", {
+      const now = new Date();
+      const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+      console.log(`[${time}] handlePrintInvoice: clicked`, {
         selectedItemsLength: selectedItems.length,
         isPrinting,
       });
@@ -911,12 +950,16 @@ const BillingPage = () => {
         })),
       };
 
-      console.log("handlePrintInvoice: payload prepared", payload);
+      const now2 = new Date();
+      const time2 = `${now2.getHours().toString().padStart(2, '0')}:${now2.getMinutes().toString().padStart(2, '0')}:${now2.getSeconds().toString().padStart(2, '0')}.${now2.getMilliseconds().toString().padStart(3, '0')}`;
+      console.log(`[${time2}] handlePrintInvoice: payload prepared`, payload);
       const result = await window.electron.ipcRenderer.invoke(
         "print-receipt",
         payload,
       );
-      console.log("Print result:", result);
+      const now5 = new Date();
+      const time5 = `${now5.getHours().toString().padStart(2, '0')}:${now5.getMinutes().toString().padStart(2, '0')}:${now5.getSeconds().toString().padStart(2, '0')}.${now5.getMilliseconds().toString().padStart(3, '0')}`;
+      console.log(`[${time5}] Print result:`, result);
 
       if (!result || result.success !== true) {
         console.warn(
@@ -1133,7 +1176,9 @@ const BillingPage = () => {
 
     const handler = (ev, data) => {
       try {
-        console.log("Renderer received last-bill-updated:", data);
+        const now4 = new Date();
+        const time4 = `${now4.getHours().toString().padStart(2, '0')}:${now4.getMinutes().toString().padStart(2, '0')}:${now4.getSeconds().toString().padStart(2, '0')}.${now4.getMilliseconds().toString().padStart(3, '0')}`;
+        console.log(`[${time4}] Renderer received last-bill-updated:`, data);
         if (!data) return;
         if (data.writeStage === "final" && data.Balance != null) {
           setCreditBalance(Number(data.Balance));
@@ -1163,25 +1208,37 @@ const BillingPage = () => {
           <div className="flex-1"></div>
           <button
             onClick={() => setShowCashInOut(true)}
-            className="px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 transition"
+            disabled={isProcessing}
+            className={`px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 transition ${
+              isProcessing ? "opacity-50 cursor-not-allowed" : ""
+            }`}
           >
             Cash IN/Out
           </button>
           <button
             onClick={() => setShowCashCount(true)}
-            className="px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 transition"
+            disabled={isProcessing}
+            className={`px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 transition ${
+              isProcessing ? "opacity-50 cursor-not-allowed" : ""
+            }`}
           >
             Cash Count
           </button>
           <button
             onClick={() => setShowTemporaryBills(true)}
-            className="px-4 py-2 rounded-lg border border-sky-200 text-sky-700 bg-white hover:bg-sky-50 transition"
+            disabled={isProcessing}
+            className={`px-4 py-2 rounded-lg border border-sky-200 text-sky-700 bg-white hover:bg-sky-50 transition ${
+              isProcessing ? "opacity-50 cursor-not-allowed" : ""
+            }`}
           >
             Temporary
           </button>
           <button
             onClick={() => setShowSearchByNameModal(true)}
-            className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition"
+            disabled={isProcessing}
+            className={`px-4 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition ${
+              isProcessing ? "opacity-50 cursor-not-allowed" : ""
+            }`}
           >
             Search by name
           </button>
@@ -1196,12 +1253,14 @@ const BillingPage = () => {
               className="border px-2 py-1 w-40"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
+              readOnly={inputsLocked}
             />
             <label className="text-sm">Phone</label>
             <div className="relative" ref={customerSearchRef}>
               <input
                 className="border px-2 py-1 w-44 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 value={customerPhone}
+                readOnly={inputsLocked}
                 onChange={(e) => {
                   const val = e.target.value;
                   setCustomerPhone(formatPhoneNumber(val));
@@ -1705,9 +1764,9 @@ const BillingPage = () => {
           <button
             ref={printButtonRef}
             onClick={() => handlePrintInvoice()}
-            disabled={isPrinting}
+            disabled={isPrinting || isProcessing}
             className={`w-full px-3 py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg flex items-center justify-center gap-2 transition ${
-              isPrinting ? "opacity-60 cursor-not-allowed" : ""
+              isPrinting || isProcessing ? "opacity-60 cursor-not-allowed" : ""
             }`}
           >
             {isPrinting && (
