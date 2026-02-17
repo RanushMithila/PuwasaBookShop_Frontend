@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import debounce from "lodash.debounce";
 import BillingItemRow from "../components/BillingItemRow";
 import SummaryBox from "../components/SummaryBox";
@@ -28,10 +29,14 @@ import {
 } from "../services/CashRegisterService";
 import { getUsers } from "../services/UserService";
 import { getCustomerByPhone } from "../services/CustomerService";
+import { getCurrentUser } from "../services/AuthService";
 
 import AlertModal from "../components/AlertModal";
 
 const BillingPage = () => {
+  // Navigation
+  const navigate = useNavigate();
+
   // Billing store
   const selectedItems = useBillingStore((s) => s.selectedItems);
   const addItem = useBillingStore((s) => s.addItem);
@@ -45,8 +50,11 @@ const BillingPage = () => {
   const user = useAuthStore((s) => s.user);
   const location = useAuthStore((s) => s.location);
   const storedLocationID = useAuthStore((s) => s.LocationID);
-  const LocationID = storedLocationID ? parseInt(storedLocationID, 10) : 1; // Fallback to 1 for safety
+  const LocationID = storedLocationID ? parseInt(storedLocationID, 10) : null; // No fallback - must come from API
   const deviceId = useAuthStore((s) => s.deviceId);
+
+  // Cashier ID from API
+  const [apiCashierId, setApiCashierId] = useState(null);
 
   // UI state
   const [showCashInOut, setShowCashInOut] = useState(false);
@@ -79,7 +87,7 @@ const BillingPage = () => {
 
   // Customer
   const [customerName, setCustomerName] = useState("Customer");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("1111111111");
   const [selectedCustomerID, setSelectedCustomerID] = useState(1);
   const locationName = "Polonnaruwa";
 
@@ -109,6 +117,7 @@ const BillingPage = () => {
   const customerSearchRef = useRef();
   const saveButtonRef = useRef();
   const printButtonRef = useRef();
+  const itemsScrollContainerRef = useRef();
   const rowRefs = useRef(new Map());
   const registerRowRef = useCallback((id, refs) => {
     rowRefs.current.set(id, refs);
@@ -203,6 +212,26 @@ const BillingPage = () => {
   };
   const cashierName = getCashierName();
 
+  // Extract cashier ID from token or user object
+  const getCashierId = () => {
+    // First priority: Use the ID fetched from /user/me API
+    if (apiCashierId) {
+      return apiCashierId;
+    }
+    // Second priority: Try to get from user object in AuthStore
+    if (user?.id) {
+      return user.id;
+    }
+    // Third priority: Try to extract from JWT token
+    if (!accessToken) return null;
+    const details = TokenService.getUserDetails(accessToken);
+    // Try various possible field names for user ID in JWT
+    return (
+      details?.userId || details?.user_id || details?.id || details?.uid || null
+    );
+  };
+  const cashierId = getCashierId();
+
   // Removed automatic bill creation on mount to avoid empty placeholder bills.
 
   // Focus Item Code input on mount (page load or after navigation)
@@ -224,6 +253,25 @@ const BillingPage = () => {
       }
     };
     fetchHelpers();
+  }, []);
+
+  // Fetch current user (cashier) data on mount
+  useEffect(() => {
+    const fetchCashierData = async () => {
+      try {
+        console.log("[CashierData] Fetching current user from /user/me");
+        const resp = await getCurrentUser();
+        console.log("[CashierData] Response:", resp);
+        if (resp && resp.status === true && resp.data) {
+          const userId = resp.data.UserID;
+          console.log("[CashierData] Setting cashier ID:", userId);
+          setApiCashierId(userId);
+        }
+      } catch (err) {
+        console.error("[CashierData] Failed to fetch current user:", err);
+      }
+    };
+    fetchCashierData();
   }, []);
 
   // Helper functions
@@ -561,12 +609,12 @@ const BillingPage = () => {
     setItemCode("");
     setSuggestions([]);
     setHighlightIndex(-1);
-    // After adding item, focus quantity of the newly added row
+
+    // No auto-scroll - cashier can manually scroll if needed
+    // After adding item, focus quantity of the newly added row (last item)
     setTimeout(() => {
-      const last =
-        useBillingStore.getState().selectedItems?.[
-          useBillingStore.getState().selectedItems.length - 1
-        ];
+      const items = useBillingStore.getState().selectedItems;
+      const last = items?.[items.length - 1];
       if (last && rowRefs.current.has(last.inventoryID)) {
         rowRefs.current.get(last.inventoryID).qtyRef.current?.focus();
         rowRefs.current.get(last.inventoryID).qtyRef.current?.select?.();
@@ -604,10 +652,20 @@ const BillingPage = () => {
       // Ensure bill exists (create if missing)
       let billIdToUse = currentBillId;
       if (!billIdToUse) {
+        // Debug logging to verify user and customer data
+        console.log("[CreateBill] Debug Info:");
+        console.log("  - user object:", user);
+        console.log("  - user?.id:", user?.id);
+        console.log("  - cashierId (from token):", cashierId);
+        console.log("  - selectedCustomerID:", selectedCustomerID);
+        console.log("  - selectedHelperID:", selectedHelperID);
+        console.log("  - LocationID:", LocationID);
+        console.log("  - deviceId:", deviceId);
+
         const createResp = await createBill({
           LocationID: LocationID,
-          CustomerID: selectedCustomerID || 1,
-          CashierID: user?.id || 1,
+          CustomerID: selectedCustomerID,
+          CashierID: cashierId,
           HelperID: selectedHelperID,
           RegisterID: deviceId,
         });
@@ -654,60 +712,62 @@ const BillingPage = () => {
       // Removed interim last_bill.json write (WriteOnly) to reduce redundant IPC overhead.
       // The final save after completion will handle the state persistence.
 
-      // Complete billing and show returned change (with retry logic)
+      // Complete billing
       const payment = {
         CashAmount: parseFloat(cashPayAmount) || 0,
         CardAmount: parseFloat(cardAmount) || 0,
         ChequeAmount: parseFloat(chequeAmount) || 0,
       };
 
-      const MAX_COMPLETE_ATTEMPTS = 3;
       let completeResp = null;
-      let lastError = null;
 
-      for (let attempt = 1; attempt <= MAX_COMPLETE_ATTEMPTS; attempt++) {
-        try {
-          console.log(
-            `[CompleteBill] Attempt ${attempt} of ${MAX_COMPLETE_ATTEMPTS}`,
-          );
-          completeResp = await completeBill(billIdToUse, payment);
-
-          if (completeResp && completeResp.status === true) {
-            setCreditBalance(completeResp.data || 0);
-            lastError = null;
-            break; // Success, exit retry loop
-          } else {
-            // API returned but with error status
-            lastError =
-              completeResp?.error_message ||
-              completeResp?.message ||
-              JSON.stringify(completeResp);
-            console.warn(
-              `[CompleteBill] Attempt ${attempt} failed:`,
-              lastError,
-            );
-          }
-        } catch (err) {
-          lastError = err.message || "Unknown error";
-          console.error(`[CompleteBill] Attempt ${attempt} threw error:`, err);
-        }
-
-        // If not the last attempt, wait briefly before retrying
-        if (attempt < MAX_COMPLETE_ATTEMPTS) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
+      try {
+        console.log(
+          "[CompleteBill] Completing bill:",
+          billIdToUse,
+          "Payment:",
+          payment,
+        );
+        completeResp = await completeBill(billIdToUse, payment);
+      } catch (err) {
+        console.error("[CompleteBill] Error:", err);
+        completeResp = {
+          status: false,
+          error_message: err.message || "Unknown error",
+        };
       }
 
-      // If all attempts failed, log out the user
-      if (lastError) {
+      // If completion failed, show error and reset everything for a fresh start
+      if (!completeResp || completeResp.status !== true) {
+        const errorMsg =
+          completeResp?.error_message ||
+          completeResp?.message ||
+          "Unknown error";
+        console.error("[CompleteBill] Failed:", errorMsg);
+
         setAlertConfig({
           isOpen: true,
           title: "Completion Failed",
-          message: `Failed to complete billing after ${MAX_COMPLETE_ATTEMPTS} attempts. You will be logged out.\n\nError: ${lastError}`,
+          message: `Failed to complete billing.\n\nError: ${errorMsg}`,
           type: "error",
         });
-        // Clear session to force logout
-        useAuthStore.getState().clearSession();
+
+        // Clear all state for a fresh start
+        resetTransaction();
+        setCurrentBillId(null);
+        setItemCode("");
+        setCustomerName("Customer");
+        setCustomerPhone("");
+        setSelectedCustomerID(1);
+        setCashPayAmount("0.00");
+        setCardAmount("0.00");
+        setChequeAmount("0.00");
+        setCreditBalance(0);
+        setUserEditedCash(false);
+        setUserEditedCard(false);
+        setUserEditedCheque(false);
+        setSelectedHelperID(null);
+        setHelperSearchTerm("");
         return;
       }
       // After a successful Save (complete billing), we DO NOT clear the UI.
@@ -718,18 +778,31 @@ const BillingPage = () => {
         setCreditBalance(balance);
         setLastBillBalance(balance); // Store in persistent state
 
-        // Update last_bill.json again with the returned balance
+        // Fetch the complete bill data from API to get customer and cashier names
+        let billData = null;
         try {
-          if (window?.electron?.ipcRenderer) {
+          const billResp = await getBill(billIdToUse);
+          console.log("[BillData] Fetched bill data:", billResp);
+          if (billResp && billResp.status === true && billResp.data) {
+            billData = billResp.data;
+          }
+        } catch (billErr) {
+          console.error("[BillData] Failed to fetch bill data:", billErr);
+        }
+
+        // Update last_bill.json with data from API (no fallbacks)
+        try {
+          if (window?.electron?.ipcRenderer && billData) {
             const finalPayload = {
               BillID: String(billIdToUse),
               date: dateStr,
-              CashierName: cashierName,
-              CustomerName: (customerName || "").trim() || "Unknown",
-              CustomerFName: (customerName || "").trim().split(/\s+/)[0] || "",
-              CustomerLName:
-                (customerName || "").trim().split(/\s+/).slice(1).join(" ") ||
-                "",
+              CashierID: String(billData.CashierID || ""),
+              CashierName: billData.CashierName || "",
+              CashierFName: billData.CashierFName || "",
+              CashierLName: billData.CashierLName || "",
+              CustomerName: billData.CustomerName || "",
+              CustomerFName: billData.CustomerFName || "",
+              CustomerLName: billData.CustomerLName || "",
               Subtotal: Number(subtotal || 0),
               Total: Number(total || 0),
               Discount: Number(totalDiscount || 0),
@@ -747,14 +820,15 @@ const BillingPage = () => {
                 UnitPrice: Number(
                   it.itemUnitPrice || it.UnitPrice || it.price || 0,
                 ),
+                Discount: Number(it.Discount || 0),
               })),
               WriteOnly: true,
             };
             const now3 = new Date();
-            const time3 = `${now3.getHours().toString().padStart(2, '0')}:${now3.getMinutes().toString().padStart(2, '0')}:${now3.getSeconds().toString().padStart(2, '0')}.${now3.getMilliseconds().toString().padStart(3, '0')}`;
+            const time3 = `${now3.getHours().toString().padStart(2, "0")}:${now3.getMinutes().toString().padStart(2, "0")}:${now3.getSeconds().toString().padStart(2, "0")}.${now3.getMilliseconds().toString().padStart(3, "0")}`;
             console.log(
-              `[${time3}] Updating final last_bill.json with balance:`,
-              finalPayload.Balance,
+              `[${time3}] Updating final last_bill.json with API data:`,
+              finalPayload,
             );
             try {
               await window.electron.ipcRenderer.invoke(
@@ -897,7 +971,7 @@ const BillingPage = () => {
       setInputsLocked(false);
 
       const now = new Date();
-      const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+      const time = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}.${now.getMilliseconds().toString().padStart(3, "0")}`;
       console.log(`[${time}] handlePrintInvoice: clicked`, {
         selectedItemsLength: selectedItems.length,
         isPrinting,
@@ -947,18 +1021,19 @@ const BillingPage = () => {
           ItemName: it.itemName || it.ItemName || it.name || "Item",
           QTY: Number(it.QTY || 1),
           UnitPrice: Number(it.itemUnitPrice || it.UnitPrice || it.price || 0),
+          Discount: Number(it.Discount || 0),
         })),
       };
 
       const now2 = new Date();
-      const time2 = `${now2.getHours().toString().padStart(2, '0')}:${now2.getMinutes().toString().padStart(2, '0')}:${now2.getSeconds().toString().padStart(2, '0')}.${now2.getMilliseconds().toString().padStart(3, '0')}`;
+      const time2 = `${now2.getHours().toString().padStart(2, "0")}:${now2.getMinutes().toString().padStart(2, "0")}:${now2.getSeconds().toString().padStart(2, "0")}.${now2.getMilliseconds().toString().padStart(3, "0")}`;
       console.log(`[${time2}] handlePrintInvoice: payload prepared`, payload);
       const result = await window.electron.ipcRenderer.invoke(
         "print-receipt",
         payload,
       );
       const now5 = new Date();
-      const time5 = `${now5.getHours().toString().padStart(2, '0')}:${now5.getMinutes().toString().padStart(2, '0')}:${now5.getSeconds().toString().padStart(2, '0')}.${now5.getMilliseconds().toString().padStart(3, '0')}`;
+      const time5 = `${now5.getHours().toString().padStart(2, "0")}:${now5.getMinutes().toString().padStart(2, "0")}:${now5.getSeconds().toString().padStart(2, "0")}.${now5.getMilliseconds().toString().padStart(3, "0")}`;
       console.log(`[${time5}] Print result:`, result);
 
       if (!result || result.success !== true) {
@@ -1177,7 +1252,7 @@ const BillingPage = () => {
     const handler = (ev, data) => {
       try {
         const now4 = new Date();
-        const time4 = `${now4.getHours().toString().padStart(2, '0')}:${now4.getMinutes().toString().padStart(2, '0')}:${now4.getSeconds().toString().padStart(2, '0')}.${now4.getMilliseconds().toString().padStart(3, '0')}`;
+        const time4 = `${now4.getHours().toString().padStart(2, "0")}:${now4.getMinutes().toString().padStart(2, "0")}:${now4.getSeconds().toString().padStart(2, "0")}.${now4.getMilliseconds().toString().padStart(3, "0")}`;
         console.log(`[${time4}] Renderer received last-bill-updated:`, data);
         if (!data) return;
         if (data.writeStage === "final" && data.Balance != null) {
@@ -1201,15 +1276,25 @@ const BillingPage = () => {
   // Removed auto-filling payment inputs from total; user enters amounts explicitly.
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden w-full bg-gray-50">
       {/* Left: Items area */}
-      <div className="flex flex-col flex-grow p-4 bg-gray-50">
-        <div className="flex items-center gap-3">
-          <div className="flex-1"></div>
+      <div className="flex flex-col flex-grow w-full lg:w-auto p-2 lg:p-4 overflow-hidden h-full">
+        <div className="flex flex-wrap items-center gap-2 lg:gap-3">
+          <div className="hidden lg:block lg:flex-1"></div>
+          {/* Temporary Logout Button */}
+          <button
+            onClick={() => {
+              useAuthStore.getState().clearSession();
+              navigate("/login");
+            }}
+            className="px-3 py-2 text-sm lg:px-4 lg:py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 border-none transition"
+          >
+            Logout
+          </button>
           <button
             onClick={() => setShowCashInOut(true)}
             disabled={isProcessing}
-            className={`px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 transition ${
+            className={`px-3 py-2 text-sm lg:px-4 lg:py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 border-none transition ${
               isProcessing ? "opacity-50 cursor-not-allowed" : ""
             }`}
           >
@@ -1218,7 +1303,7 @@ const BillingPage = () => {
           <button
             onClick={() => setShowCashCount(true)}
             disabled={isProcessing}
-            className={`px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 transition ${
+            className={`px-3 py-2 text-sm lg:px-4 lg:py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 border-none transition ${
               isProcessing ? "opacity-50 cursor-not-allowed" : ""
             }`}
           >
@@ -1227,7 +1312,7 @@ const BillingPage = () => {
           <button
             onClick={() => setShowTemporaryBills(true)}
             disabled={isProcessing}
-            className={`px-4 py-2 rounded-lg border border-sky-200 text-sky-700 bg-white hover:bg-sky-50 transition ${
+            className={`px-3 py-2 text-sm lg:px-4 lg:py-2 rounded-lg bg-sky-600 text-white hover:bg-sky-700 border-none transition ${
               isProcessing ? "opacity-50 cursor-not-allowed" : ""
             }`}
           >
@@ -1236,17 +1321,17 @@ const BillingPage = () => {
           <button
             onClick={() => setShowSearchByNameModal(true)}
             disabled={isProcessing}
-            className={`px-4 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition ${
+            className={`px-3 py-2 text-sm lg:px-4 lg:py-2 rounded-lg bg-gray-600 text-white hover:bg-gray-700 border-none transition ${
               isProcessing ? "opacity-50 cursor-not-allowed" : ""
             }`}
           >
             Search by name
           </button>
-          <div className="flex-1"></div>
+          <div className="hidden lg:block lg:flex-1"></div>
         </div>
 
         {/* Customer row */}
-        <div className="flex items-center gap-3 mt-3">
+        <div className="flex flex-wrap items-center gap-3 mt-3">
           <div className="flex items-center space-x-2">
             <label className="text-sm">Customer</label>
             <input
@@ -1446,124 +1531,143 @@ const BillingPage = () => {
         </div>
 
         {/* Items table */}
-        <div className="overflow-y-auto bg-white rounded-xl shadow mt-4 px-2 py-2 flex-grow">
-          <div className="relative">
-            {/* Header row */}
-            <div
-              className="grid text-sm font-semibold border-b py-2 sticky top-0 bg-white z-10"
-              style={{
-                gridTemplateColumns: "240px 1fr 120px 70px 120px 100px",
-                columnGap: "12px",
-              }}
-            >
-              <div className="flex flex-col">
-                <div className="text-gray-600">Item Code</div>
-                <div className="relative w-full">
-                  <input
-                    className="border mt-1 px-2 py-2 w-full text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 pr-8"
-                    placeholder="Scan / Type barcode"
-                    value={itemCode}
-                    ref={itemCodeRef}
-                    readOnly={inputsLocked}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      // If user types '+' we end item entry and focus cash
-                      if (val.trim() === "+") {
-                        setItemCode("");
-                        setSuggestions([]);
-                        setHighlightIndex(-1);
-                        setTimeout(() => cashInputRef.current?.focus(), 0);
-                        return;
-                      }
-                      setItemCode(val.toUpperCase());
-                    }}
-                    onKeyDown={(e) => {
-                      if (
-                        e.key === "Enter" &&
-                        itemCode.trim() &&
-                        suggestions.length === 0
-                      ) {
-                        // Enter on item code triggers barcode lookup fallback
-                        searchBarcode(itemCode.trim());
-                      }
+        <div className="overflow-hidden bg-white rounded-xl shadow mt-4 flex flex-col flex-grow min-h-[300px] max-h-[65vh] lg:max-h-full">
+          <div
+            ref={itemsScrollContainerRef}
+            className="overflow-x-auto overflow-y-auto flex-grow px-2"
+          >
+            <div className="min-w-[800px] relative pb-2">
+              {/* Header row */}
+              <div
+                className="grid text-sm font-semibold border-b py-2 sticky top-0 bg-white z-20"
+                style={{
+                  gridTemplateColumns: "240px 1fr 120px 70px 120px 100px",
+                  columnGap: "12px",
+                }}
+              >
+                <div className="flex flex-col">
+                  <div className="text-gray-600">Item Code</div>
+                  <div className="relative w-full">
+                    <input
+                      className="border mt-1 px-2 py-2 w-full text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 pr-8"
+                      placeholder="Scan / Type barcode"
+                      value={itemCode}
+                      ref={itemCodeRef}
+                      readOnly={inputsLocked}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        // If user types '+' we end item entry and focus cash
+                        if (val.trim() === "+") {
+                          setItemCode("");
+                          setSuggestions([]);
+                          setHighlightIndex(-1);
+                          setTimeout(() => cashInputRef.current?.focus(), 0);
+                          return;
+                        }
+                        setItemCode(val.toUpperCase());
+                      }}
+                      onKeyDown={(e) => {
+                        if (
+                          e.key === "Enter" &&
+                          itemCode.trim() &&
+                          suggestions.length === 0
+                        ) {
+                          // Enter on item code triggers barcode lookup fallback
+                          searchBarcode(itemCode.trim());
+                        }
+                      }}
+                    />
+                    {itemCode && (
+                      <button
+                        tabIndex={-1}
+                        onClick={() => {
+                          setItemCode("");
+                          setSuggestions([]);
+                          setHighlightIndex(-1);
+                          itemCodeRef.current?.focus();
+                        }}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-500 p-1"
+                        title="Clear"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    )}
+
+                    {/* Suggestions dropdown anchored to the input */}
+                    {suggestions.length > 0 && (
+                      <div className="absolute top-full left-0 w-[500px] bg-white border mt-1 z-50 max-h-60 overflow-y-auto shadow-xl rounded-md text-left">
+                        {suggestions.map((s, idx) => (
+                          <div
+                            key={s.inventoryID}
+                            onClick={() => selectSuggestedItem(s)}
+                            className={`p-3 cursor-pointer border-b last:border-b-0 hover:bg-sky-50 transition-colors ${
+                              idx === highlightIndex ? "bg-sky-100" : ""
+                            }`}
+                          >
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <div className="font-bold text-gray-800 text-sm uppercase">
+                                  {s.itemName}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  {s.barcode} &bull; {s.itemDescription}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className="block font-semibold text-emerald-600 text-sm">
+                                  Rs: {Number(s.itemUnitPrice).toFixed(2)}
+                                </span>
+                                <span className="text-[10px] text-gray-400">
+                                  Inventory ID: {s.inventoryID}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="text-gray-600">Description</div>
+                <div className="text-gray-600">Unit Price</div>
+                <div className="text-gray-600">QTY</div>
+                <div className="text-gray-600">Amount</div>
+                <div className="text-gray-600">Discount</div>
+              </div>
+
+              {selectedItems.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No items selected
+                </div>
+              ) : (
+                selectedItems.map((item, i) => (
+                  <BillingItemRow
+                    key={item.inventoryID || `it-${i}`}
+                    item={item}
+                    onDoubleClick={() => removeItem(item.inventoryID)}
+                    registerRowRef={registerRowRef}
+                    onFocusItemCode={() => {
+                      itemCodeRef.current?.focus();
+                      itemCodeRef.current?.select?.();
                     }}
                   />
-                  {itemCode && (
-                    <button
-                      tabIndex={-1}
-                      onClick={() => {
-                        setItemCode("");
-                        setSuggestions([]);
-                        setHighlightIndex(-1);
-                        itemCodeRef.current?.focus();
-                      }}
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-500 p-1"
-                      title="Clear"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="text-gray-600">Description</div>
-              <div className="text-gray-600">Unit Price</div>
-              <div className="text-gray-600">QTY</div>
-              <div className="text-gray-600">Amount</div>
-              <div className="text-gray-600">Discount</div>
+                ))
+              )}
             </div>
-
-            {/* Overlap suggestions panel positioned over table (doesn't change table layout) */}
-            {suggestions.length > 0 && (
-              <div className="absolute left-0 right-0 bg-white border mt-1 z-40 max-h-48 overflow-y-auto shadow">
-                {suggestions.map((s, idx) => (
-                  <div
-                    key={s.inventoryID}
-                    onClick={() => selectSuggestedItem(s)}
-                    className={`p-2 cursor-pointer uppercase ${
-                      idx === highlightIndex ? "bg-blue-100" : ""
-                    }`}
-                  >
-                    <div className="font-semibold">{s.itemName}</div>
-                    <div className="text-xs text-gray-600">
-                      Barcode: {s.barcode} | Rs: {s.itemUnitPrice}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
-
-          {selectedItems.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              No items selected
-            </div>
-          ) : (
-            selectedItems.map((item, i) => (
-              <BillingItemRow
-                key={item.inventoryID || `it-${i}`}
-                item={item}
-                onDoubleClick={() => removeItem(item.inventoryID)}
-                registerRowRef={registerRowRef}
-                onFocusItemCode={() => {
-                  itemCodeRef.current?.focus();
-                  itemCodeRef.current?.select?.();
-                }}
-              />
-            ))
-          )}
         </div>
 
         <div className="flex justify-between items-center mt-4">
@@ -1599,7 +1703,7 @@ const BillingPage = () => {
       </div>
 
       {/* Right: Payment and actions */}
-      <div className="w-[340px] bg-white p-4 border-l flex flex-col">
+      <div className="w-full lg:w-[350px] lg:min-w-[350px] bg-white p-4 lg:border-l border-t lg:border-t-0 flex flex-col h-auto lg:h-full overflow-y-auto">
         <div className="space-y-3">
           <div className="text-sm font-semibold text-gray-700">
             Cash Pay Amount
@@ -1732,7 +1836,7 @@ const BillingPage = () => {
             className={`w-full px-3 py-2 mb-2 rounded-lg flex items-center justify-center gap-2 transition ${
               selectedItems.length === 0 || isProcessing
                 ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                : "bg-white text-sky-700 border border-sky-200 hover:bg-sky-50"
+                : "bg-sky-600 text-white hover:bg-sky-700 border-none"
             }`}
           >
             <span>Save Temporary</span>
@@ -1765,7 +1869,7 @@ const BillingPage = () => {
             ref={printButtonRef}
             onClick={() => handlePrintInvoice()}
             disabled={isPrinting || isProcessing}
-            className={`w-full px-3 py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg flex items-center justify-center gap-2 transition ${
+            className={`w-full px-3 py-2 bg-slate-700 text-white hover:bg-slate-800 border-none rounded-lg flex items-center justify-center gap-2 transition ${
               isPrinting || isProcessing ? "opacity-60 cursor-not-allowed" : ""
             }`}
           >
@@ -1776,7 +1880,7 @@ const BillingPage = () => {
           </button>
           <button
             onClick={() => handleClear()}
-            className="w-full px-3 py-2 bg-white hover:bg-red-50 border border-red-300 rounded-lg text-red-600 transition"
+            className="w-full px-3 py-2 bg-red-600 text-white hover:bg-red-700 border-none rounded-lg transition"
           >
             Clear
           </button>

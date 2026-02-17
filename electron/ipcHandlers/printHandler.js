@@ -36,6 +36,7 @@ function runPythonPrint(event, receiptData) {
       ItemName: i.ItemName || "Unknown",
       QTY: Number(i.QTY || 1),
       UnitPrice: Number(i.UnitPrice || 0),
+      Discount: Number(i.Discount || 0),
     })),
   };
 
@@ -107,7 +108,11 @@ function runPythonPrint(event, receiptData) {
   }
 
   return new Promise((resolve) => {
-    console.log("printHandler: Printing starts, invoking print.exe:", exePath, outJson);
+    console.log(
+      "printHandler: Printing starts, invoking print.exe:",
+      exePath,
+      outJson,
+    );
     const execOptions = {
       cwd: printingDir,
       windowsHide: true,
