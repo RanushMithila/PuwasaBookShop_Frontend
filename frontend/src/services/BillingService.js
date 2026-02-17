@@ -7,7 +7,16 @@ import httpClient from "./HttpClient";
  */
 export const createBill = async (billingData) => {
   try {
+    console.log("=== CREATE BILLING API CALL ===");
+    console.log("Endpoint: POST /billing/billing");
+    console.log("LocationID:", billingData.LocationID);
+    console.log("RegisterID:", billingData.RegisterID);
+    console.log("================================");
     console.log("Creating bill with data:", billingData);
+    console.log(
+      "[createBill] Full request body:",
+      JSON.stringify(billingData, null, 2),
+    );
     const response = await httpClient.post(
       "/billing/billing",
       billingData,
@@ -29,6 +38,10 @@ export const createBill = async (billingData) => {
 export const addBillDetails = async (detailsData) => {
   try {
     console.log("Adding bill details with data:", detailsData);
+    console.log(
+      "[addBillDetails] Full request body:",
+      JSON.stringify(detailsData, null, 2),
+    );
     const response = await httpClient.post(
       "/billing/details",
       detailsData,
@@ -68,6 +81,14 @@ export const getBill = async (billId) => {
 export const completeBill = async (billId, paymentData) => {
   try {
     console.log(`Completing bill ${billId} with payment:`, paymentData);
+    console.log(
+      "[completeBill] Full request body:",
+      JSON.stringify(paymentData, null, 2),
+    );
+    console.log(
+      "[completeBill] Endpoint:",
+      `/billing/billing/complete/${billId}`,
+    );
     const response = await httpClient.post(
       `/billing/billing/complete/${billId}`,
       paymentData,
