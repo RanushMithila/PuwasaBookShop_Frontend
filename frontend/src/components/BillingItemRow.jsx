@@ -73,7 +73,7 @@ const BillingItemRow = ({
     <div
       className="grid text-sm py-2 border-b hover:bg-emerald-50/40 cursor-pointer transition-colors"
       style={{
-        gridTemplateColumns: "120px 1fr 120px 70px 120px 100px",
+        gridTemplateColumns: "240px 1fr 120px 70px 120px 100px",
         columnGap: "12px",
       }}
       onDoubleClick={handleDoubleClick}

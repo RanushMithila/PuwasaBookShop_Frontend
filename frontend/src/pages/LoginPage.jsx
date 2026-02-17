@@ -28,7 +28,7 @@ const LoginPage = () => {
           if (response.data.isClosed === true) {
             setIsBlocked(true);
             setErrorMessage(
-              "Access Denied: This cash register is currently CLOSED. Please contact an administrator to open the register for this device."
+              "Access Denied: This cash register is currently CLOSED. Please contact an administrator to open the register for this device.",
             );
           } else {
             // isClosed is false, so it's open - allow login

@@ -101,32 +101,87 @@ const LoginForm = () => {
             registerResponse.data,
           );
 
-          // Fetch register list to find locationID (as requested)
-          try {
-            const registersResp = await listCashRegisters();
-            if (
-              registersResp.status === true &&
-              registersResp.data?.cashRegisters
-            ) {
-              const myRegister = registersResp.data.cashRegisters.find(
-                (r) => r.cashRegisterID === deviceId,
-              );
-              if (myRegister) {
-                console.log("Matched register:", myRegister);
-                // Fetch user profile and update session in store
-                const profile = await getProfile();
-                setSession({
-                  user: profile.user || profile,
-                  location: {
-                    id: myRegister.LocationID,
-                    name: myRegister.RegisterName,
-                  },
-                  LocationID: myRegister.LocationID,
-                });
+          // First, try to use locationID directly from getRegisterByDeviceId response
+          let registerLocationId = null;
+          let registerName = null;
+
+          if (registerResponse.data) {
+            // The getRegisterByDeviceId response may contain locationID directly
+            registerLocationId =
+              registerResponse.data.locationID ||
+              registerResponse.data.LocationID ||
+              registerResponse.data.location_id;
+            registerName =
+              registerResponse.data.registerName ||
+              registerResponse.data.RegisterName ||
+              registerResponse.data.register_name;
+            console.log(
+              "LocationID from getRegisterByDeviceId:",
+              registerLocationId,
+            );
+          }
+
+          // If not found in direct response, try listCashRegisters as fallback
+          if (!registerLocationId) {
+            try {
+              const registersResp = await listCashRegisters();
+              if (
+                registersResp.status === true &&
+                registersResp.data?.cashRegisters
+              ) {
+                // Try multiple field names for matching
+                const myRegister = registersResp.data.cashRegisters.find(
+                  (r) =>
+                    r.cashRegisterID === deviceId ||
+                    r.deviceID === deviceId ||
+                    r.DeviceID === deviceId,
+                );
+                if (myRegister) {
+                  console.log("Matched register from list:", myRegister);
+                  registerLocationId =
+                    myRegister.locationID || myRegister.LocationID;
+                  registerName =
+                    registerName ||
+                    myRegister.registerName ||
+                    myRegister.RegisterName;
+                  console.log(
+                    "Register locationID from list:",
+                    registerLocationId,
+                  );
+                }
               }
+            } catch (listErr) {
+              console.error("Failed to fetch registers list:", listErr);
             }
-          } catch (listErr) {
-            console.error("Failed to fetch registers or profile:", listErr);
+          }
+
+          // Update session with the found locationID
+          if (registerLocationId) {
+            try {
+              const profile = await getProfile();
+              console.log("Using LocationID:", registerLocationId);
+              setSession({
+                user: profile.user || profile,
+                location: {
+                  id: registerLocationId,
+                  name: registerName || "Unknown Register",
+                },
+                LocationID: registerLocationId,
+              });
+            } catch (profileErr) {
+              console.error("Failed to fetch profile:", profileErr);
+              // Still set the LocationID even if profile fetch fails
+              setSession({
+                user: null,
+                location: {
+                  id: registerLocationId,
+                  name: registerName || "Unknown Register",
+                },
+                LocationID: registerLocationId,
+              });
+            }
+          } else {
+            console.error("Could not determine LocationID for this device!");
           }
 
           // Navigate to billing page

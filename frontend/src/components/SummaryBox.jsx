@@ -239,7 +239,7 @@ const SummaryBox = () => {
               /* ignore */
             }
           }}
-          className="w-full bg-white text-red-600 py-3 px-4 rounded-lg font-semibold border border-red-200 hover:bg-red-50 transition-colors"
+          className="w-full bg-red-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-red-700 border-none transition-colors"
         >
           Clear
         </button>

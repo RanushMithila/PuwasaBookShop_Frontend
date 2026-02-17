@@ -1,4 +1,4 @@
-import httpClient from './HttpClient';
+import httpClient from "./HttpClient";
 
 /**
  * Logs in a user by exchanging credentials for an access token.
@@ -13,18 +13,18 @@ export const login = async (username, password) => {
   try {
     // Create form data for the token endpoint
     const formData = new URLSearchParams();
-    formData.append('username', username);
-    formData.append('password', password);
-    formData.append('grant_type', 'password'); // Required by OAuth2 spec
+    formData.append("username", username);
+    formData.append("password", password);
+    formData.append("grant_type", "password"); // Required by OAuth2 spec
 
     // Use a dedicated 'postForm' method in HttpClient or a custom call
     // This call does not include the default 'Authorization' header
-    const response = await httpClient.postForm('/auth/token', formData, false);
-    
+    const response = await httpClient.postForm("/auth/token", formData, false);
+
     // The response should be { access_token: "...", token_type: "bearer" }
     return response;
   } catch (error) {
-    console.error('Login API call failed:', error);
+    console.error("Login API call failed:", error);
     // Re-throw the error so the calling component (e.g., LoginPage) can handle it
     throw error;
   }
@@ -41,8 +41,8 @@ export const getProfile = async () => {
   try {
     // This endpoint should be protected and return the current user's data
     // Example endpoint: '/users/me'
-    const profileData = await httpClient.get('/users/me');
-    
+    const profileData = await httpClient.get("/users/me");
+
     // MOCK RESPONSE STRUCTURE (for example):
     // {
     //   "user": { "id": 1, "name": "Ranu", "role": "Admin" },
@@ -50,7 +50,23 @@ export const getProfile = async () => {
     // }
     return profileData;
   } catch (error) {
-    console.error('Get profile failed:', error);
+    console.error("Get profile failed:", error);
+    throw error;
+  }
+};
+
+/**
+ * Fetches the current user's information from /user/me endpoint.
+ * Returns UserID and Email.
+ *
+ * @returns {Promise<object>} The current user's data { UserID, Email }
+ */
+export const getCurrentUser = async () => {
+  try {
+    const response = await httpClient.get("/user/me", true);
+    return response;
+  } catch (error) {
+    console.error("Get current user failed:", error);
     throw error;
   }
 };

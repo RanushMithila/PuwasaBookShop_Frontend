@@ -32,6 +32,7 @@ const useBillingStore = create((set, get) => ({
         // Keep provided QTY / Discount if passed (used when loading existing bill)
         const initialQty = item.QTY != null ? Math.max(1, item.QTY) : 1;
         const initialDiscount = item.Discount != null ? item.Discount : 0;
+        // Append new items to the end (ascending order: first entered = first position)
         return {
           selectedItems: [
             ...state.selectedItems,
