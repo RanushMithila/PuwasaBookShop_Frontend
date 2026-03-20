@@ -54,7 +54,7 @@ const SearchResults = ({
       <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-b-lg shadow-lg z-50">
         <div className="p-4 text-center text-gray-500">
           <div className="text-4xl mb-2">📚</div>
-          <p>No books found for "{searchQuery}"</p>
+          <p>No books found for {'"'}{searchQuery}{'"'}</p>
           <p className="text-sm">Try searching with different keywords</p>
         </div>
       </div>
