@@ -21,6 +21,13 @@ export const login = async (username, password) => {
     // This call does not include the default 'Authorization' header
     const response = await httpClient.postForm("/auth/token", formData, false);
 
+    // Log tokens received from login
+    console.log("[AuthService] 🔑 Login response received:");
+    console.log("[AuthService] Access Token:", response?.access_token || "null");
+    console.log("[AuthService] Refresh Token:", response?.refresh_token || "null");
+    console.log("[AuthService] Token Type:", response?.token_type || "not provided");
+    console.log("[AuthService] Full response keys:", response ? Object.keys(response) : []);
+
     // The response should be { access_token: "...", token_type: "bearer" }
     return response;
   } catch (error) {
@@ -41,7 +48,7 @@ export const getProfile = async () => {
   try {
     // This endpoint should be protected and return the current user's data
     // Example endpoint: '/users/me'
-    const profileData = await httpClient.get("/users/me");
+    const profileData = await httpClient.get("/user/me");
 
     // MOCK RESPONSE STRUCTURE (for example):
     // {

@@ -4,6 +4,19 @@ const path = require("path");
 const fs = require("fs");
 
 function runPythonPrint(event, receiptData) {
+  // Helper: log to terminal AND forward to renderer DevTools
+  const logToRenderer = (level, ...args) => {
+    const msg = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+    if (level === 'error') console.error(...args);
+    else if (level === 'warn') console.warn(...args);
+    else console.log(...args);
+    try {
+      if (event && event.sender && !event.sender.isDestroyed()) {
+        event.sender.send('main-log', { level, message: msg });
+      }
+    } catch (_) {}
+  };
+
   const printingDir = path.join("D:\\", "printing");
   const outJson = path.join(printingDir, "last_bill.json");
   const outPdf = path.join(printingDir, "last_python_bill.pdf");
@@ -31,6 +44,7 @@ function runPythonPrint(event, receiptData) {
     Discount: Number(receiptData.Discount || 0),
     CashAmount: Number(receiptData.CashAmount || 0),
     CardAmount: Number(receiptData.CardAmount || 0),
+    ChequeAmount: Number(receiptData.ChequeAmount || 0),
     Balance: Number(receiptData.Balance || 0),
     Details: items.map((i) => ({
       ItemName: i.ItemName || "Unknown",
@@ -59,25 +73,27 @@ function runPythonPrint(event, receiptData) {
     return (async () => {
       let writeSuccess = false;
       let writtenMTime = null;
+      logToRenderer('log', `printHandler [WriteOnly]: START writing last_bill.json to ${outJson}`);
+      logToRenderer('log', `printHandler [WriteOnly]: BillID=${billJson.BillID}, Total=${billJson.Total}, Balance=${billJson.Balance}`);
       try {
         await fs.promises.writeFile(
           outJson,
           JSON.stringify(billJson, null, 2),
           "utf8",
         );
-        console.log("printHandler: last_bill.json updated");
         writeSuccess = true;
         try {
           const stat = await fs.promises.stat(outJson);
           writtenMTime = stat.mtime.toISOString();
         } catch (sErr) {}
-        console.log(`printHandler: Wrote last_bill.json to ${outJson}`);
+        logToRenderer('log', `printHandler [WriteOnly]: DONE writing last_bill.json (mtime=${writtenMTime})`);
       } catch (err) {
-        console.error("printHandler: Failed to write last_bill.json:", err);
+        logToRenderer('error', 'printHandler [WriteOnly]: FAILED to write last_bill.json:', err);
       }
 
       try {
         const stage = Number(billJson.Balance || 0) !== 0 ? "final" : "interim";
+        logToRenderer('log', `printHandler [WriteOnly]: Notifying renderer (writeStage=${stage})`);
         if (event && event.sender && event.sender.send) {
           event.sender.send("last-bill-updated", {
             BillID: billJson.BillID,
@@ -86,7 +102,7 @@ function runPythonPrint(event, receiptData) {
           });
         }
       } catch (notifyErr) {
-        console.warn("printHandler: failed to notify renderer:", notifyErr);
+        logToRenderer('warn', 'printHandler [WriteOnly]: failed to notify renderer:', notifyErr);
       }
 
       return Object.assign(resultBase, { writeSuccess, writtenMTime });
@@ -94,25 +110,37 @@ function runPythonPrint(event, receiptData) {
   }
 
   // Non-write flow: run the print.exe using the existing last_bill.json (do NOT overwrite it)
+  logToRenderer('log', `printHandler [Print]: Preparing to invoke print.exe (reading last_bill.json from ${outJson})`);
+
+  // Read and log the bill that will be printed from disk
+  let billFromDisk = null;
+  try {
+    if (fs.existsSync(outJson)) {
+      const diskContent = fs.readFileSync(outJson, 'utf8');
+      billFromDisk = JSON.parse(diskContent);
+      logToRenderer('log', `printHandler [Print]: Current last_bill.json content: BillID=${billFromDisk.BillID}, Total=${billFromDisk.Total}, Balance=${billFromDisk.Balance}, Items=${(billFromDisk.Details || []).length}`);
+      logToRenderer('log', `printHandler [Print]: Full bill data: ${JSON.stringify(billFromDisk)}`);
+    } else {
+      logToRenderer('warn', `printHandler [Print]: last_bill.json not found at ${outJson}`);
+    }
+  } catch (readErr) {
+    logToRenderer('warn', `printHandler [Print]: Failed to read last_bill.json: ${readErr.message}`);
+  }
+  resultBase.billFromDisk = billFromDisk;
+
   const exePath = path.join(printingDir, "print.exe");
   if (!fs.existsSync(exePath)) {
     resultBase.message = `print.exe not found at ${exePath}`;
-    console.warn("printHandler:", resultBase.message);
+    logToRenderer('warn', 'printHandler [Print]:', resultBase.message);
     return resultBase;
   }
 
   if (!fs.existsSync(logoPath)) {
-    console.warn(
-      `printHandler: logo.png not found at ${logoPath}, continuing without logo`,
-    );
+    logToRenderer('warn', `printHandler [Print]: logo.png not found at ${logoPath}, continuing without logo`);
   }
 
   return new Promise((resolve) => {
-    console.log(
-      "printHandler: Printing starts, invoking print.exe:",
-      exePath,
-      outJson,
-    );
+    logToRenderer('log', `printHandler [Print]: START invoking print.exe: ${exePath} ${outJson}`);
     const execOptions = {
       cwd: printingDir,
       windowsHide: true,
@@ -126,7 +154,7 @@ function runPythonPrint(event, receiptData) {
 
       if (error) {
         resultBase.message = `print.exe failed: ${error.message}`;
-        console.warn("printHandler: print.exe error:", error.message);
+        logToRenderer('warn', 'printHandler [Print]: print.exe FAILED:', error.message);
         resolve(resultBase);
         return;
       }
@@ -136,6 +164,7 @@ function runPythonPrint(event, receiptData) {
       resultBase.pdfPath = pdfExists ? outPdf : null;
       if (!pdfExists)
         resultBase.message = "print.exe completed but PDF was not created";
+      logToRenderer('log', `printHandler [Print]: print.exe DONE (printed=${resultBase.printed}, pdf=${pdfExists ? outPdf : 'not created'})`);
       resolve(resultBase);
     });
   });

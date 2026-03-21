@@ -19,7 +19,7 @@ const useBillingStore = create((set, get) => ({
   addItem: (item) =>
     set((state) => {
       const existingIndex = state.selectedItems.findIndex(
-        (existingItem) => existingItem.inventoryID === item.inventoryID,
+        (existingItem) => String(existingItem.inventoryID) === String(item.inventoryID),
       );
       if (existingIndex !== -1) {
         const updatedItems = [...state.selectedItems];
@@ -46,7 +46,7 @@ const useBillingStore = create((set, get) => ({
   removeItem: (inventoryID) =>
     set((state) => ({
       selectedItems: state.selectedItems.filter(
-        (item) => item.inventoryID !== inventoryID,
+        (item) => String(item.inventoryID) !== String(inventoryID),
       ),
     })),
 
@@ -54,7 +54,7 @@ const useBillingStore = create((set, get) => ({
   updateItemQuantity: (inventoryID, quantity) =>
     set((state) => ({
       selectedItems: state.selectedItems.map((item) =>
-        item.inventoryID === inventoryID
+        String(item.inventoryID) === String(inventoryID)
           ? { ...item, QTY: Math.max(1, quantity) }
           : item,
       ),
@@ -65,7 +65,7 @@ const useBillingStore = create((set, get) => ({
     set((state) => ({
       // Discount now represents an absolute currency amount applied to the whole line, capped at line total
       selectedItems: state.selectedItems.map((item) => {
-        if (item.inventoryID !== inventoryID) return item;
+        if (String(item.inventoryID) !== String(inventoryID)) return item;
         const lineTotal = (item.itemUnitPrice || 0) * (item.QTY || 1);
         const safeDiscount = Math.max(
           0,
@@ -87,6 +87,10 @@ const useBillingStore = create((set, get) => ({
 
   // Clears only the selected items (used when loading a temporary bill) while preserving current bill id
   clearItems: () => set({ selectedItems: [] }),
+
+  // Replaces the entire selectedItems array at once (used when loading a temp bill).
+  // Unlike addItem, this does NOT increment quantities — it sets items exactly as provided.
+  setItems: (items) => set({ selectedItems: items }),
 
   // --- COMPUTED GETTERS ---
 

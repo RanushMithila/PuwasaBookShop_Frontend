@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import debounce from "lodash.debounce";
 import BillingItemRow from "../components/BillingItemRow";
 import SummaryBox from "../components/SummaryBox";
 import useBillingStore from "../store/BillingStore";
@@ -118,17 +117,25 @@ const BillingPage = () => {
   const saveButtonRef = useRef();
   const printButtonRef = useRef();
   const itemsScrollContainerRef = useRef();
+  const isAddingItemRef = useRef(false);
   const rowRefs = useRef(new Map());
   const registerRowRef = useCallback((id, refs) => {
     rowRefs.current.set(id, refs);
   }, []);
   const [inputsLocked, setInputsLocked] = useState(false);
+  // Tracks whether the current bill was loaded from a temporary bill (already has details on server)
+  const [isLoadedFromTemp, setIsLoadedFromTemp] = useState(false);
 
   // Computed totals from store
   const subtotal = useBillingStore((s) => s.getSubtotal());
   const totalDiscount = useBillingStore((s) => s.getTotalDiscount());
   const total = useBillingStore((s) => s.getTotal());
   const itemCount = useBillingStore((s) => s.getTotalItems());
+
+  const showSaveButton =
+    parseFloat(cashPayAmount || 0) > 0 ||
+    parseFloat(cardAmount || 0) > 0 ||
+    parseFloat(chequeAmount || 0) > 0;
 
   const handleCloseAlert = () => {
     setAlertConfig({ ...alertConfig, isOpen: false });
@@ -238,6 +245,51 @@ const BillingPage = () => {
   useEffect(() => {
     const t = setTimeout(() => itemCodeRef.current?.focus(), 0);
     return () => clearTimeout(t);
+  }, []);
+
+  // Background token refresh — keeps the session alive while on the billing page.
+  // Access token expires every 30min; we refresh every 25min to stay ahead.
+  useEffect(() => {
+    const REFRESH_INTERVAL_MS = 25 * 60 * 1000; // 25 minutes
+
+    const refreshIfNeeded = async () => {
+      try {
+        const authStore = useAuthStore.getState();
+        const currentToken = authStore.accessToken;
+        const currentRefreshToken = authStore.refreshToken;
+        const wasExpired = !currentToken || TokenService.isTokenExpired(currentToken);
+
+        console.log("[BillingPage] 🔍 Token check started");
+        console.log("[BillingPage] Current Access Token:", currentToken || "null");
+        console.log("[BillingPage] Current Refresh Token:", currentRefreshToken || "null");
+        console.log("[BillingPage] Access Token Expired?:", wasExpired);
+
+        const isValid = await TokenService.ensureValidToken();
+
+        // Read tokens again after refresh attempt
+        const afterStore = useAuthStore.getState();
+        console.log("[BillingPage] After ensureValidToken:");
+        console.log("[BillingPage] New Access Token:", afterStore.accessToken || "null");
+        console.log("[BillingPage] New Refresh Token:", afterStore.refreshToken || "null");
+        console.log("[BillingPage] Token changed?:", currentToken !== afterStore.accessToken);
+
+        if (!isValid) {
+          console.warn("[TokenRefresh] Token refresh failed, session may have expired");
+        } else if (wasExpired) {
+          console.log("[TokenRefresh] Token was expired — refreshed successfully");
+        } else {
+          console.log("[TokenRefresh] Token is still valid, no refresh needed");
+        }
+      } catch (err) {
+        console.error("[TokenRefresh] Background refresh error:", err);
+      }
+    };
+
+    // Run immediately on mount, then periodically
+    refreshIfNeeded();
+    const intervalId = setInterval(refreshIfNeeded, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   // Fetch users/helpers on mount
@@ -476,6 +528,8 @@ const BillingPage = () => {
       } else if (e.key === "ArrowUp") {
         setHighlightIndex((i) => Math.max(-1, i - 1));
       } else if (e.key === "Enter") {
+        // Prevent duplicate API calls from rapid Enter presses
+        if (isAddingItemRef.current) return;
         if (highlightIndex >= 0 && suggestions[highlightIndex]) {
           selectSuggestedItem(suggestions[highlightIndex]);
         } else if (itemCode.trim()) {
@@ -489,19 +543,7 @@ const BillingPage = () => {
     // only depends on suggestions/highlightIndex
   }, [suggestions, highlightIndex, itemCode]);
 
-  // Auto-search when user types at least 3 characters (debounced)
-  useEffect(() => {
-    const doSearch = debounce((val) => {
-      if (val && val.length >= 3) {
-        searchBarcode(val);
-      } else {
-        setSuggestions([]);
-      }
-    }, 250);
-
-    doSearch(itemCode);
-    return () => doSearch.cancel();
-  }, [itemCode]);
+  // Search is now triggered only on Enter key press (see onKeyDown handler on itemCode input)
 
   const searchBarcode = async (code) => {
     try {
@@ -511,6 +553,13 @@ const BillingPage = () => {
         setHighlightIndex(0);
       } else {
         setSuggestions([]);
+        setAlertConfig({
+          isOpen: true,
+          title: "Item Not Found",
+          message:
+            resp?.error_message || "No item found for the given barcode.",
+          type: "error",
+        });
       }
     } catch (err) {
       console.error("Barcode search failed:", err);
@@ -532,94 +581,112 @@ const BillingPage = () => {
   };
 
   const selectSuggestedItem = async (item) => {
-    // Check stock before adding
+    // Prevent concurrent calls from rapid Enter presses
+    if (isAddingItemRef.current) return;
+    isAddingItemRef.current = true;
     try {
-      // Get current quantity in cart
-      const currentItems = useBillingStore.getState().selectedItems;
-      const existingItem = currentItems.find(
+      // Check stock before adding
+      try {
+        // Get current quantity in cart
+        const currentItems = useBillingStore.getState().selectedItems;
+        const existingItem = currentItems.find(
+          (i) => i.inventoryID === item.inventoryID,
+        );
+        const currentQty = existingItem ? existingItem.QTY : 0;
+        const requestQty = currentQty + 1;
+        // Verify with API
+        // LocationID is retrieved from AuthStore
+        const resp = await getItemQuantity(item.barcode, LocationID);
+
+        if (
+          resp &&
+          resp.status === true &&
+          Array.isArray(resp.data) &&
+          resp.data.length > 0
+        ) {
+          // Response data is an array: [{ inventoryID, quantity }]
+          const availableStock = Number(resp.data[0].quantity || 0);
+
+          if (requestQty > availableStock) {
+            setAlertConfig({
+              isOpen: true,
+              title: "Insufficient Stock",
+              message: `Cannot add item.\nRequested: ${requestQty}\nAvailable: ${availableStock}`,
+            });
+            return;
+          }
+        } else if (
+          resp &&
+          resp.status === true &&
+          Array.isArray(resp.data) &&
+          resp.data.length === 0
+        ) {
+          // If data is empty array, it might mean 0 stock or item not found in stock table?
+          const availableStock = 0;
+          if (requestQty > availableStock) {
+            setAlertConfig({
+              isOpen: true,
+              title: "Insufficient Stock",
+              message: `Cannot add item.\nRequested: ${requestQty}\nAvailable: ${availableStock}`,
+            });
+            return;
+          }
+        } else {
+          // Fallback or error handling
+          console.warn("Could not verify stock level", resp);
+          // User asked to "tell user that specific item cannot add", so blocking on failure might be safer
+          // but if the API fails for other reasons we might block valid sales.
+          // Let's assume strict check as requested.
+          // But logic: if status is false, it might mean item not found or error.
+        }
+      } catch (err) {
+        console.error("Stock check failed:", err);
+        // alert("Error checking stock. Please try again.");
+        // return;
+      }
+
+      // Check if item already exists in the list before adding
+      const existingItems = useBillingStore.getState().selectedItems;
+      const alreadyInList = existingItems.find(
         (i) => i.inventoryID === item.inventoryID,
       );
-      const currentQty = existingItem ? existingItem.QTY : 0;
-      const requestQty = currentQty + 1;
-      // Verify with API
-      // LocationID is retrieved from AuthStore
-      const resp = await getItemQuantity(item.barcode, LocationID);
 
-      if (
-        resp &&
-        resp.status === true &&
-        Array.isArray(resp.data) &&
-        resp.data.length > 0
-      ) {
-        // Response data is an array: [{ inventoryID, quantity }]
-        const availableStock = Number(resp.data[0].quantity || 0);
+      // addItem in the store handles both cases:
+      // - If item exists: increments QTY by 1
+      // - If item is new: adds it with QTY 1
+      addItem({
+        inventoryID: item.inventoryID,
+        itemName: item.itemName,
+        itemUnitPrice: item.itemUnitPrice,
+        itemCostPrice: item.itemCostPrice,
+        barcode: item.barcode,
+        itemDescription: item.itemDescription,
+        itemCategory: item.itemCategory,
+        locationID: item.locationID,
+        QTY: 1,
+        Discount: 0,
+        amount: item.itemUnitPrice,
+      });
+      setItemCode("");
+      setSuggestions([]);
+      setHighlightIndex(-1);
 
-        if (requestQty > availableStock) {
-          setAlertConfig({
-            isOpen: true,
-            title: "Insufficient Stock",
-            message: `Cannot add item.\nRequested: ${requestQty}\nAvailable: ${availableStock}`,
-          });
-          return;
+      // Focus the correct row's quantity input
+      // If item already existed, focus that row; otherwise focus the newly added last row
+      setTimeout(() => {
+        const targetId = alreadyInList
+          ? alreadyInList.inventoryID
+          : useBillingStore.getState().selectedItems?.[
+              useBillingStore.getState().selectedItems.length - 1
+            ]?.inventoryID;
+        if (targetId && rowRefs.current.has(targetId)) {
+          rowRefs.current.get(targetId).qtyRef.current?.focus();
+          rowRefs.current.get(targetId).qtyRef.current?.select?.();
         }
-      } else if (
-        resp &&
-        resp.status === true &&
-        Array.isArray(resp.data) &&
-        resp.data.length === 0
-      ) {
-        // If data is empty array, it might mean 0 stock or item not found in stock table?
-        const availableStock = 0;
-        if (requestQty > availableStock) {
-          setAlertConfig({
-            isOpen: true,
-            title: "Insufficient Stock",
-            message: `Cannot add item.\nRequested: ${requestQty}\nAvailable: ${availableStock}`,
-          });
-          return;
-        }
-      } else {
-        // Fallback or error handling
-        console.warn("Could not verify stock level", resp);
-        // User asked to "tell user that specific item cannot add", so blocking on failure might be safer
-        // but if the API fails for other reasons we might block valid sales.
-        // Let's assume strict check as requested.
-        // But logic: if status is false, it might mean item not found or error.
-      }
-    } catch (err) {
-      console.error("Stock check failed:", err);
-      // alert("Error checking stock. Please try again.");
-      // return;
+      }, 0);
+    } finally {
+      isAddingItemRef.current = false;
     }
-
-    // Map API response fields to billing store item shape
-    addItem({
-      inventoryID: item.inventoryID,
-      itemName: item.itemName,
-      itemUnitPrice: item.itemUnitPrice,
-      itemCostPrice: item.itemCostPrice,
-      barcode: item.barcode,
-      itemDescription: item.itemDescription,
-      itemCategory: item.itemCategory,
-      locationID: item.locationID,
-      QTY: 1,
-      Discount: 0,
-      amount: item.itemUnitPrice,
-    });
-    setItemCode("");
-    setSuggestions([]);
-    setHighlightIndex(-1);
-
-    // No auto-scroll - cashier can manually scroll if needed
-    // After adding item, focus quantity of the newly added row (last item)
-    setTimeout(() => {
-      const items = useBillingStore.getState().selectedItems;
-      const last = items?.[items.length - 1];
-      if (last && rowRefs.current.has(last.inventoryID)) {
-        rowRefs.current.get(last.inventoryID).qtyRef.current?.focus();
-        rowRefs.current.get(last.inventoryID).qtyRef.current?.select?.();
-      }
-    }, 0);
   };
 
   // Save: create (if needed) -> add details -> complete; shows returned change in the sidebar
@@ -682,31 +749,38 @@ const BillingPage = () => {
         setCurrentBillId(billIdToUse);
       }
 
-      const itemsPayload = selectedItems.map((it) => {
-        // Send the raw discount value (absolute rupees) as-entered by the user.
-        // Do not convert to percentage on the client.
-        return {
-          InventoryID: it.inventoryID,
-          Discount: Number(it.Discount) || 0,
-          QTY: it.QTY || 1,
-        };
-      });
-
-      const resp = await addBillDetails({
-        BillID: billIdToUse,
-        Items: itemsPayload,
-      });
-      console.log("Add details response:", resp);
-      if (!(resp && resp.status === true)) {
-        setAlertConfig({
-          isOpen: true,
-          title: "Save Error",
-          message:
-            "Failed to save details: " +
-            (resp?.error_message || resp?.message || JSON.stringify(resp)),
-          type: "error",
+      // Skip addBillDetails when the bill was loaded from temp storage — items are already saved on the
+      // server. Re-sending them would duplicate line items and inflate the server-side total, causing
+      // a payment amount mismatch error.
+      if (!isLoadedFromTemp) {
+        const itemsPayload = selectedItems.map((it) => {
+          // Send the raw discount value (absolute rupees) as-entered by the user.
+          // Do not convert to percentage on the client.
+          return {
+            InventoryID: it.inventoryID,
+            Discount: Number(it.Discount) || 0,
+            QTY: it.QTY || 1,
+          };
         });
-        return;
+
+        const resp = await addBillDetails({
+          BillID: billIdToUse,
+          Items: itemsPayload,
+        });
+        console.log("Add details response:", resp);
+        if (!(resp && resp.status === true)) {
+          setAlertConfig({
+            isOpen: true,
+            title: "Save Error",
+            message:
+              "Failed to save details: " +
+              (resp?.error_message || resp?.message || JSON.stringify(resp)),
+            type: "error",
+          });
+          return;
+        }
+      } else {
+        console.log("[handleAddDetails] Skipping addBillDetails — bill loaded from temp (items already on server).");
       }
 
       // Removed interim last_bill.json write (WriteOnly) to reduce redundant IPC overhead.
@@ -755,6 +829,7 @@ const BillingPage = () => {
         // Clear all state for a fresh start
         resetTransaction();
         setCurrentBillId(null);
+        setIsLoadedFromTemp(false);
         setItemCode("");
         setCustomerName("Customer");
         setCustomerPhone("");
@@ -790,63 +865,71 @@ const BillingPage = () => {
           console.error("[BillData] Failed to fetch bill data:", billErr);
         }
 
-        // Update last_bill.json with data from API (no fallbacks)
-        try {
-          if (window?.electron?.ipcRenderer && billData) {
-            const finalPayload = {
-              BillID: String(billIdToUse),
-              date: dateStr,
-              CashierID: String(billData.CashierID || ""),
-              CashierName: billData.CashierName || "",
-              CashierFName: billData.CashierFName || "",
-              CashierLName: billData.CashierLName || "",
-              CustomerName: billData.CustomerName || "",
-              CustomerFName: billData.CustomerFName || "",
-              CustomerLName: billData.CustomerLName || "",
-              Subtotal: Number(subtotal || 0),
-              Total: Number(total || 0),
-              Discount: Number(totalDiscount || 0),
-              CashAmount: parseFloat(cashPayAmount) || 0,
-              CardAmount: parseFloat(cardAmount) || 0,
-              ChequeAmount: parseFloat(chequeAmount) || 0,
-              Balance: Number(completeResp.data || 0),
-              Details: selectedItems.map((it) => ({
-                ItemName:
-                  it.itemDescription ||
-                  it.Description ||
-                  it.itemName ||
-                  `Item ${it.inventoryID}`,
-                QTY: Number(it.QTY || 1),
-                UnitPrice: Number(
-                  it.itemUnitPrice || it.UnitPrice || it.price || 0,
-                ),
-                Discount: Number(it.Discount || 0),
-              })),
-              WriteOnly: true,
-            };
-            const now3 = new Date();
-            const time3 = `${now3.getHours().toString().padStart(2, "0")}:${now3.getMinutes().toString().padStart(2, "0")}:${now3.getSeconds().toString().padStart(2, "0")}.${now3.getMilliseconds().toString().padStart(3, "0")}`;
-            console.log(
-              `[${time3}] Updating final last_bill.json with API data:`,
+        // Update last_bill.json — MANDATORY before clearing state.
+        // If this fails, the user must know so they don't print stale data.
+        if (window?.electron?.ipcRenderer) {
+          const finalPayload = {
+            BillID: String(billIdToUse),
+            date: dateStr,
+            CashierID: String(billData?.CashierID || cashierId || ""),
+            CashierName: billData?.CashierName || cashierName || "",
+            CashierFName: billData?.CashierFName || "",
+            CashierLName: billData?.CashierLName || "",
+            CustomerName: billData?.CustomerName || customerName || "",
+            CustomerFName: billData?.CustomerFName || "",
+            CustomerLName: billData?.CustomerLName || "",
+            Subtotal: Number(subtotal || 0),
+            Total: Number(total || 0),
+            Discount: Number(totalDiscount || 0),
+            CashAmount: parseFloat(cashPayAmount) || 0,
+            CardAmount: parseFloat(cardAmount) || 0,
+            ChequeAmount: parseFloat(chequeAmount) || 0,
+            Balance: Number(completeResp.data || 0),
+            Details: selectedItems.map((it) => ({
+              ItemName:
+                it.itemDescription ||
+                it.Description ||
+                it.itemName ||
+                `Item ${it.inventoryID}`,
+              QTY: Number(it.QTY || 1),
+              UnitPrice: Number(
+                it.itemUnitPrice || it.UnitPrice || it.price || 0,
+              ),
+              Discount: Number(it.Discount || 0),
+            })),
+            WriteOnly: true,
+          };
+          const now3 = new Date();
+          const time3 = `${now3.getHours().toString().padStart(2, "0")}:${now3.getMinutes().toString().padStart(2, "0")}:${now3.getSeconds().toString().padStart(2, "0")}.${now3.getMilliseconds().toString().padStart(3, "0")}`;
+          console.log(
+            `[${time3}] Updating final last_bill.json:`,
+            finalPayload,
+          );
+
+          try {
+            await window.electron.ipcRenderer.invoke(
+              "print-receipt",
               finalPayload,
             );
-            try {
-              await window.electron.ipcRenderer.invoke(
-                "print-receipt",
-                finalPayload,
-              );
-            } catch (ipcErr2) {
-              console.warn("Failed to write final last_bill.json:", ipcErr2);
-            }
+            console.log(`[${time3}] last_bill.json updated successfully`);
+          } catch (ipcErr) {
+            console.error("CRITICAL: Failed to write last_bill.json:", ipcErr);
+            setAlertConfig({
+              isOpen: true,
+              title: "Print File Error",
+              message: "Bill was saved but print file could not be updated. Please try printing again or contact support.",
+              type: "error",
+            });
+            // Do NOT clear state — user needs to retry print
+            return;
           }
-        } catch (ufErr) {
-          console.warn("Final last_bill write failed:", ufErr);
         }
 
         // On success, clear the entire transaction and UI fields for the next customer
         // but keep the balance and last bill balance visible.
         resetTransaction();
         setCurrentBillId(null);
+        setIsLoadedFromTemp(false);
         setItemCode("");
         setCustomerName("Customer");
         setCustomerPhone("");
@@ -950,6 +1033,26 @@ const BillingPage = () => {
         message: "Temporary bill saved (ID: " + billId + ")",
         type: "success",
       });
+
+      // Clear the transaction and UI fields after successful save
+      resetTransaction();
+      setCurrentBillId(null);
+      setItemCode("");
+      setCustomerName("Customer");
+      setCustomerPhone("");
+      setSelectedCustomerID(1);
+      setCashPayAmount("0.00");
+      setCardAmount("0.00");
+      setChequeAmount("0.00");
+      setCreditBalance(0);
+      setUserEditedCash(false);
+      setUserEditedCard(false);
+      setUserEditedCheque(false);
+      setSelectedHelperID(null);
+      setHelperSearchTerm("");
+
+      // Focus item code to start new bill
+      setTimeout(() => itemCodeRef.current?.focus(), 0);
     } catch (err) {
       console.error("Save temporary failed:", err);
       setAlertConfig({
@@ -964,6 +1067,11 @@ const BillingPage = () => {
   };
 
   const handlePrintInvoice = async () => {
+    // Guard: prevent print while save is still in progress (race condition)
+    if (isProcessing) {
+      console.warn("[handlePrintInvoice] Blocked — save is still processing");
+      return;
+    }
     try {
       // Mark printing in progress (used to disable the button and show overlay)
       setIsPrinting(true);
@@ -992,49 +1100,24 @@ const BillingPage = () => {
         return;
       }
 
-      // Build the exact JSON structure the printing subsystem expects
-      const billId =
-        currentBillId ||
-        `INV-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-      const dateStr = new Date().toISOString().replace("T", " ").slice(0, 19);
-      const cashierId =
-        window?.electron?.user?.id || useBillingStore.getState().cashier || "1";
-
-      // Derive customer name fields from the Customer input box
-      const fullCustomerName = (customerName || "").trim();
-
-      const payload = {
-        BillID: billId,
-        date: dateStr,
-        CashierName: cashierName,
-        // Send customer name instead of an ID for printing as requested
-        CustomerName: fullCustomerName,
-        Subtotal: Number(subtotal || 0),
-        Total: Number(total || 0),
-        Discount: Number(totalDiscount || 0),
-        // Include payment amounts so the main process can write them to last_bill.json
-        CashAmount: parseFloat(cashPayAmount) || 0,
-        CardAmount: parseFloat(cardAmount) || 0,
-        ChequeAmount: parseFloat(chequeAmount) || 0,
-        Balance: Number(creditBalance || 0),
-        Details: selectedItems.map((it) => ({
-          ItemName: it.itemName || it.ItemName || it.name || "Item",
-          QTY: Number(it.QTY || 1),
-          UnitPrice: Number(it.itemUnitPrice || it.UnitPrice || it.price || 0),
-          Discount: Number(it.Discount || 0),
-        })),
-      };
-
+      // Print uses the last_bill.json that was already written by Save.
+      // We send an empty payload (no WriteOnly flag) so printHandler skips
+      // overwriting the file and just invokes print.exe on what's on disk.
+      // This avoids using stale React state that Save already cleared.
       const now2 = new Date();
       const time2 = `${now2.getHours().toString().padStart(2, "0")}:${now2.getMinutes().toString().padStart(2, "0")}:${now2.getSeconds().toString().padStart(2, "0")}.${now2.getMilliseconds().toString().padStart(3, "0")}`;
-      console.log(`[${time2}] handlePrintInvoice: payload prepared`, payload);
+      console.log(`[${time2}] handlePrintInvoice: invoking print.exe on existing last_bill.json`);
+
       const result = await window.electron.ipcRenderer.invoke(
         "print-receipt",
-        payload,
+        {},
       );
       const now5 = new Date();
       const time5 = `${now5.getHours().toString().padStart(2, "0")}:${now5.getMinutes().toString().padStart(2, "0")}:${now5.getSeconds().toString().padStart(2, "0")}.${now5.getMilliseconds().toString().padStart(3, "0")}`;
       console.log(`[${time5}] Print result:`, result);
+      if (result && result.billFromDisk) {
+        console.log(`[${time5}] Bill being printed:`, result.billFromDisk);
+      }
 
       if (!result || result.success !== true) {
         console.warn(
@@ -1102,35 +1185,54 @@ const BillingPage = () => {
           );
         });
 
-        // Clear only items then repopulate from bill Details directly (no extra inventory fetch)
-        useBillingStore.getState().clearItems();
-
+        // Build an array mapped exactly from the server's Details.
+        // We do not merge duplicate items here so the data is loaded exactly as it is.
+        // However, if the server returns multiple rows for the same InventoryID, we keep the one with the MAXIMUM QTY.
+        // This solves issues where the backend retains stale lower-quantity iterations of a bill item.
         if (Array.isArray(resp.data.Details)) {
-          // Clear current items before adding loaded bill's items
-          useBillingStore.getState().clearItems();
-          resp.data.Details.forEach((d) => {
-            const qty = d.QTY || 1;
+          const uniqueItemsMap = new Map();
+          resp.data.Details.forEach((d, index) => {
+            const id = d.InventoryID;
             const unitPrice = d.UnitPrice || d.itemUnitPrice || 0;
-            const lineTotal = (unitPrice || 0) * qty;
-            // Treat backend Discount as an absolute rupee amount and do not
-            // convert it to a percentage. Clamp to line total and round to 2dp.
+            const qty = d.QTY || 1;
             const raw = parseFloat(d.Discount || 0) || 0;
+            const lineTotal = (unitPrice || 0) * qty;
             const absDiscount = parseFloat(Math.min(raw, lineTotal).toFixed(2));
-            addItem({
-              inventoryID: d.InventoryID,
-              itemName: d.ItemName || `Item ${d.InventoryID}`,
+
+            const newItem = {
+              inventoryID: id,
+              itemName: d.ItemName || `Item ${id}`,
               itemUnitPrice: unitPrice,
               itemCostPrice: d.CostPrice || 0,
               barcode: d.Barcode || d.barcode || "",
-              itemDescription:
-                d.Description || d.ItemDescription || d.itemDescription || "",
+              itemDescription: d.Description || d.ItemDescription || d.itemDescription || "",
               itemCategory: d.Category || null,
               locationID: resp.data.LocationID,
               QTY: qty,
-              Discount: absDiscount, // store internally as absolute amount
-            });
+              Discount: absDiscount,
+              uniqueKey: `${id}-${index}`
+            };
+
+            if (!uniqueItemsMap.has(id)) {
+              uniqueItemsMap.set(id, newItem);
+            } else {
+              const existing = uniqueItemsMap.get(id);
+              if (qty > existing.QTY) {
+                uniqueItemsMap.set(id, newItem);
+              }
+            }
           });
+
+          const loadedItems = [...uniqueItemsMap.values()];
+          console.log("[fetchTemporaryBillDetails] Loading these items into the cart:", loadedItems);
+
+          // Replace the store items atomically
+          useBillingStore.getState().setItems(loadedItems);
         }
+
+        // Mark that this bill was loaded from temp — its details are already on the server.
+        // handleAddDetails will skip addBillDetails to prevent duplicating line items.
+        setIsLoadedFromTemp(true);
       }
     } catch (err) {
       console.error("Fetch bill failed:", err);
@@ -1223,6 +1325,7 @@ const BillingPage = () => {
     setCardAmount("0.00");
     setChequeAmount("0.00");
     setCreditBalance(0);
+    setIsLoadedFromTemp(false);
     // Reset local customer inputs as well
     setCustomerName("Customer");
     setCustomerPhone("");
@@ -1267,6 +1370,29 @@ const BillingPage = () => {
     return () => {
       try {
         ipc.removeListener("last-bill-updated", handler);
+      } catch (e) {
+        /* ignore */
+      }
+    };
+  }, []);
+
+  // Forward main-process printHandler logs to DevTools console
+  useEffect(() => {
+    const ipc = window?.electron?.ipcRenderer;
+    if (!ipc || !ipc.on) return;
+
+    const handler = (_ev, data) => {
+      if (!data || !data.message) return;
+      const prefix = "[Main Process]";
+      if (data.level === "error") console.error(prefix, data.message);
+      else if (data.level === "warn") console.warn(prefix, data.message);
+      else console.log(prefix, data.message);
+    };
+
+    ipc.on("main-log", handler);
+    return () => {
+      try {
+        ipc.removeListener("main-log", handler);
       } catch (e) {
         /* ignore */
       }
@@ -1567,12 +1693,18 @@ const BillingPage = () => {
                         setItemCode(val.toUpperCase());
                       }}
                       onKeyDown={(e) => {
-                        if (
-                          e.key === "Enter" &&
-                          itemCode.trim() &&
-                          suggestions.length === 0
-                        ) {
-                          // Enter on item code triggers barcode lookup fallback
+                        if (e.key === "Enter" && suggestions.length === 0) {
+                          if (!itemCode.trim()) {
+                            setAlertConfig({
+                              isOpen: true,
+                              title: "Empty Barcode",
+                              message:
+                                "Please enter a barcode before searching.",
+                              type: "info",
+                            });
+                            return;
+                          }
+                          // Enter on item code triggers barcode lookup
                           searchBarcode(itemCode.trim());
                         }
                       }}
@@ -1655,7 +1787,7 @@ const BillingPage = () => {
               ) : (
                 selectedItems.map((item, i) => (
                   <BillingItemRow
-                    key={item.inventoryID || `it-${i}`}
+                    key={item.uniqueKey || `it-${item.inventoryID || i}-${i}`}
                     item={item}
                     onDoubleClick={() => removeItem(item.inventoryID)}
                     registerRowRef={registerRowRef}
@@ -1853,9 +1985,11 @@ const BillingPage = () => {
                 setTimeout(() => printButtonRef.current?.focus(), 0);
               }
             }}
-            disabled={selectedItems.length === 0 || isProcessing}
+            disabled={
+              selectedItems.length === 0 || isProcessing || !showSaveButton
+            }
             className={`w-full px-3 py-2 rounded-lg flex items-center justify-center gap-2 transition ${
-              selectedItems.length === 0 || isProcessing
+              selectedItems.length === 0 || isProcessing || !showSaveButton
                 ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                 : "bg-emerald-600 text-white hover:bg-emerald-700"
             }`}
