@@ -129,17 +129,19 @@ export const setOpeningAmount = async (deviceId, openingAmount) => {
  */
 export const setClosingAmount = async (deviceId, closingAmount, notes) => {
   try {
-    console.log("Setting closing amount:", { deviceId, closingAmount, notes });
+    const payload = {
+      DeviceID: deviceId,
+      ClosingAmount: closingAmount,
+      notes: notes,
+    };
+    console.log("[Cash Count] exact request payload:\n", JSON.stringify(payload, null, 2));
+
     const response = await httpClient.post(
       "/cashregister/setClosingAmount",
-      {
-        DeviceID: deviceId,
-        ClosingAmount: closingAmount,
-        notes: notes,
-      },
+      payload,
       true,
     );
-    console.log("setClosingAmount response:", response);
+    console.log("[Cash Count] exact response received:\n", JSON.stringify(response, null, 2));
     return response;
   } catch (error) {
     console.error("setClosingAmount failed:", error);

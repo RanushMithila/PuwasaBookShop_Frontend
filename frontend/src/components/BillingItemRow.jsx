@@ -25,6 +25,11 @@ const BillingItemRow = ({
   const qtyRef = useRef(null);
   const discountRef = useRef(null);
 
+  // Sync local quantity when store updates item.QTY (e.g. duplicate item scanned)
+  useEffect(() => {
+    setQuantity(item.QTY || 1);
+  }, [item.QTY]);
+
   useEffect(() => {
     if (typeof registerRowRef === "function") {
       registerRowRef(item.inventoryID, { qtyRef, discountRef });

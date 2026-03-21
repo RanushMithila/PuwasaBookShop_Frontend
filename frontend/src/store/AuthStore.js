@@ -36,6 +36,9 @@ const useAuthStore = create(
 
       // Set authentication tokens
       setTokens: (accessToken, refreshToken) => {
+        console.log("[AuthStore] 🔑 setTokens called (initial login)");
+        console.log("[AuthStore] Access Token:", accessToken || "null");
+        console.log("[AuthStore] Refresh Token:", refreshToken || "null");
         set({
           accessToken: accessToken || null,
           refreshToken: refreshToken || null,
@@ -44,6 +47,11 @@ const useAuthStore = create(
 
       // Update only the access token (useful for token refresh)
       updateAccessToken: (accessToken) => {
+        const previousToken = get().accessToken;
+        console.log("[AuthStore] 🔄 updateAccessToken called (token refresh)");
+        console.log("[AuthStore] Previous Access Token:", previousToken || "null");
+        console.log("[AuthStore] New Access Token:", accessToken || "null");
+        console.log("[AuthStore] Tokens match (same)?:", previousToken === accessToken);
         set({ accessToken: accessToken || null });
       },
 
