@@ -1,6 +1,7 @@
 import { HashRouter, Routes, Route } from "react-router-dom";
 import LoginPage from "../pages/LoginPage";
 import BillingPage from "../pages/BillingPage";
+import RefundPage from "../pages/RefundPage";
 import Layout from "../components/Layout";
 
 const AppRoutes = () => {
@@ -17,6 +18,14 @@ const AppRoutes = () => {
           element={
             <Layout>
               <BillingPage />
+            </Layout>
+          }
+        />
+        <Route
+          path="/refund"
+          element={
+            <Layout>
+              <RefundPage />
             </Layout>
           }
         />

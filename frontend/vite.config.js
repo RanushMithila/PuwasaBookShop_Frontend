@@ -12,7 +12,7 @@ export default defineConfig({
     strictPort: true, // Exit if port is already in use
     proxy: {
       "/api": {
-        target: "http://172.191.203.238",
+        target: "http://172.191.203.238:8888",
         changeOrigin: true,
         secure: false,
       },

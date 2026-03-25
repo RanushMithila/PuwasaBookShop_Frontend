@@ -99,6 +99,7 @@ const BillingPage = () => {
   const [cashPayAmount, setCashPayAmount] = useState("0.00");
   const [cardAmount, setCardAmount] = useState("0.00");
   const [chequeAmount, setChequeAmount] = useState("0.00");
+  const [voucherCode, setVoucherCode] = useState("");
   const [creditBalance, setCreditBalance] = useState(0);
   const [lastBillBalance, setLastBillBalance] = useState(0); // Persistent last bill balance
   const [userEditedCash, setUserEditedCash] = useState(false);
@@ -392,7 +393,7 @@ const BillingPage = () => {
                 "[CustomerSearch] Exact match found, auto-filling name.",
               );
               setCustomerName(customers[0].firstname || "Customer");
-              setSelectedCustomerID(customers[0].customerid || 1);
+              setSelectedCustomerID(customers[0].customerid);
               setShowCustomerSuggestions(false);
             }
           } else {
@@ -788,9 +789,11 @@ const BillingPage = () => {
 
       // Complete billing
       const payment = {
+        CustomerID: selectedCustomerID,
         CashAmount: parseFloat(cashPayAmount) || 0,
         CardAmount: parseFloat(cardAmount) || 0,
         ChequeAmount: parseFloat(chequeAmount) || 0,
+        VoucherCode: voucherCode,
       };
 
       let completeResp = null;
@@ -837,6 +840,7 @@ const BillingPage = () => {
         setCashPayAmount("0.00");
         setCardAmount("0.00");
         setChequeAmount("0.00");
+        setVoucherCode("");
         setCreditBalance(0);
         setUserEditedCash(false);
         setUserEditedCard(false);
@@ -978,8 +982,8 @@ const BillingPage = () => {
       // Create a bill first
       const createResp = await createBill({
         LocationID: LocationID,
-        CustomerID: selectedCustomerID || 1,
-        CashierID: user?.id || 1,
+        CustomerID: selectedCustomerID,
+        CashierID: user?.id,
         HelperID: selectedHelperID,
         RegisterID: deviceId,
       });
@@ -1324,6 +1328,7 @@ const BillingPage = () => {
     setCashPayAmount("0.00");
     setCardAmount("0.00");
     setChequeAmount("0.00");
+    setVoucherCode("");
     setCreditBalance(0);
     setIsLoadedFromTemp(false);
     // Reset local customer inputs as well
@@ -1925,6 +1930,27 @@ const BillingPage = () => {
             }}
             placeholder="0.00"
             ref={chequeInputRef}
+            readOnly={inputsLocked}
+          />
+        </div>
+
+        <div className="space-y-3">
+          <div className="text-sm font-semibold text-gray-700">
+            Voucher Code
+          </div>
+          <input
+            className="w-full border px-4 py-3 text-base rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            value={voucherCode}
+            onChange={(e) => {
+              if (!inputsLocked) setVoucherCode(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                saveButtonRef.current?.focus();
+              }
+            }}
+            placeholder="Enter voucher code"
             readOnly={inputsLocked}
           />
         </div>

@@ -180,3 +180,82 @@ ipcMain.handle("print-receipt", async (event, receiptData = {}) => {
     return { success: false, error: e?.message || String(e) };
   }
 });
+
+ipcMain.handle("print-voucher", async (event, voucherData = {}) => {
+  try {
+    console.log("Received voucherData:", voucherData);
+    const printingDir = path.join("D:\\", "printing");
+    const outJson = path.join(printingDir, "voucher.json");
+
+    if (!fs.existsSync(printingDir))
+      fs.mkdirSync(printingDir, { recursive: true });
+
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
+      now.getDate(),
+    )} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+    const voucherJson = {
+      RefundID: String(voucherData.RefundID || ""),
+      VoucherCode: String(voucherData.VoucherCode || ""),
+      BillID: String(voucherData.BillID || ""),
+      RefundTotal: Number(voucherData.RefundTotal || 0),
+      date: dateStr,
+    };
+
+    await fs.promises.writeFile(
+      outJson,
+      JSON.stringify(voucherJson, null, 2),
+      "utf8",
+    );
+    console.log("Voucher JSON written to:", outJson);
+
+    const exePath = path.join(printingDir, "print.exe");
+    if (!fs.existsSync(exePath)) {
+      return {
+        success: true,
+        printed: false,
+        message: `print.exe not found at ${exePath}`,
+        jsonPath: outJson,
+        voucher: voucherJson,
+      };
+    }
+
+    return new Promise((resolve) => {
+      const execOptions = {
+        cwd: printingDir,
+        windowsHide: true,
+        timeout: 120000,
+        env: Object.assign({}, process.env),
+      };
+
+      execFile(exePath, [outJson], execOptions, (error, stdout, stderr) => {
+        if (error) {
+          console.warn("print.exe failed for voucher:", error.message);
+          resolve({
+            success: true,
+            printed: false,
+            message: `print.exe failed: ${error.message}`,
+            jsonPath: outJson,
+            voucher: voucherJson,
+          });
+          return;
+        }
+        console.log("Voucher print.exe completed successfully");
+        resolve({
+          success: true,
+          printed: true,
+          jsonPath: outJson,
+          voucher: voucherJson,
+          stdout: stdout?.toString().trim(),
+          stderr: stderr?.toString().trim(),
+        });
+      });
+    });
+  } catch (e) {
+    console.error("print voucher failed:", e?.message || e);
+    return { success: false, error: e?.message || String(e) };
+  }
+});
+

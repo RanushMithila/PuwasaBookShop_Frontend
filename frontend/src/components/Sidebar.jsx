@@ -14,11 +14,10 @@ const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const menuItems = [{ path: "/billing", label: "Billing" }];
-
-  const handleNavigation = (path) => {
-    navigate(path);
-  };
+  const menuItems = [
+    { path: "/billing", label: "Billing", icon: "🧾" },
+    { path: "/refund", label: "Refund", icon: "↩️" },
+  ];
 
   return (
     <div className="w-[84px] bg-gradient-to-b from-white to-gray-50 border-r flex flex-col items-center py-4">
@@ -29,8 +28,24 @@ const Sidebar = () => {
           className="w-full h-full object-cover"
         />
       </div>
-      <nav className="flex flex-col gap-4 text-[22px] text-gray-600">
-        {/* Navigation items removed per user request */}
+      <nav className="flex flex-col gap-3 w-full px-2">
+        {menuItems.map((item) => {
+          const isActive = location.pathname === item.path;
+          return (
+            <button
+              key={item.path}
+              onClick={() => navigate(item.path)}
+              className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 border-none cursor-pointer ${
+                isActive
+                  ? "bg-indigo-100 text-indigo-700 shadow-sm"
+                  : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              }`}
+            >
+              <span className="text-lg">{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
       </nav>
       <div className="mt-auto text-[10px] text-gray-400 pb-2">v1.0</div>
     </div>

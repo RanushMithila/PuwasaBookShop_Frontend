@@ -46,8 +46,8 @@ const SummaryBox = () => {
     try {
       const billData = {
         LocationID: LocationID,
-        CustomerID: customer?.id || 1,
-        CashierID: user?.id || 1,
+        CustomerID: customer?.id,
+        CashierID: user?.id,
       };
 
       const billResponse = await createBill(billData); // Ensure createBill is defined and imported
@@ -144,8 +144,8 @@ const SummaryBox = () => {
       // Create a bill (if needed) and add details but do NOT complete the bill
       const billData = {
         LocationID: LocationID,
-        CustomerID: customer?.id || 1,
-        CashierID: user?.id || 1,
+        CustomerID: customer?.id,
+        CashierID: user?.id,
       };
 
       const createResp = await createBill(billData);
