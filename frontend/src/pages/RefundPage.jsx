@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { getBill } from "../services/BillingService";
-import { processRefund } from "../services/RefundService";
+import { processRefund, getVoucherByCode } from "../services/RefundService";
 import AlertModal from "../components/AlertModal";
 import RefundSuccessModal from "../components/RefundSuccessModal";
 
@@ -28,6 +28,7 @@ const RefundPage = () => {
     isOpen: false,
     refundId: "",
     voucherCode: "",
+    expireDate: "",
     billId: "",
     refundTotal: 0,
     message: "",
@@ -151,13 +152,48 @@ const RefundPage = () => {
       if (resp && resp.status === true) {
         const refundIdVal = resp.data?.RefundID ?? "-";
         const voucher = resp.data?.VoucherCode ?? "-";
+        let expireDate = "";
+        let voucherValue = getRefundTotal();
+
+        // Fetch full voucher details from voucher API to get ExpiryDate and Value
+        if (voucher && voucher !== "-") {
+          try {
+            const voucherResp = await getVoucherByCode(voucher);
+            console.log("[Refund] Voucher details:", voucherResp);
+            if (voucherResp && voucherResp.status === true && voucherResp.data) {
+              expireDate = voucherResp.data.ExpiryDate || "";
+              voucherValue = Number(voucherResp.data.Value || voucherValue);
+            }
+          } catch (vErr) {
+            console.warn("[Refund] Could not fetch voucher details:", vErr);
+          }
+        }
+
+        // Automatically write voucher.json via IPC so it's always up-to-date
+        const ipc = window?.electron?.ipcRenderer;
+        if (ipc && ipc.invoke) {
+          try {
+            await ipc.invoke("print-voucher", {
+              RefundID: refundIdVal,
+              VoucherCode: voucher,
+              ExpireDate: expireDate,
+              BillID: billData.BillID,
+              RefundTotal: voucherValue,
+              WriteOnly: true,
+            });
+            console.log("[Refund] voucher.json written successfully");
+          } catch (ipcErr) {
+            console.error("[Refund] Failed to write voucher.json:", ipcErr);
+          }
+        }
 
         setSuccessModal({
           isOpen: true,
           refundId: refundIdVal,
           voucherCode: voucher,
+          expireDate: expireDate,
           billId: billData.BillID,
-          refundTotal: getRefundTotal(),
+          refundTotal: voucherValue,
           message: resp.message || "Refund processed successfully.",
         });
 
@@ -425,6 +461,7 @@ const RefundPage = () => {
         onClose={handleCloseSuccess}
         refundId={successModal.refundId}
         voucherCode={successModal.voucherCode}
+        expireDate={successModal.expireDate}
         billId={successModal.billId}
         refundTotal={successModal.refundTotal}
         message={successModal.message}

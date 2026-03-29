@@ -5,6 +5,7 @@ const RefundSuccessModal = ({
   onClose,
   refundId,
   voucherCode,
+  expireDate,
   billId,
   refundTotal,
   message,
@@ -56,6 +57,7 @@ const RefundSuccessModal = ({
         const result = await ipc.invoke("print-voucher", {
           RefundID: refundId,
           VoucherCode: voucherCode,
+          ExpireDate: expireDate,
           BillID: billId,
           RefundTotal: refundTotal,
         });

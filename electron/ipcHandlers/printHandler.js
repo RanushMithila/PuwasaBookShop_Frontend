@@ -45,6 +45,7 @@ function runPythonPrint(event, receiptData) {
     CashAmount: Number(receiptData.CashAmount || 0),
     CardAmount: Number(receiptData.CardAmount || 0),
     ChequeAmount: Number(receiptData.ChequeAmount || 0),
+    VoucherAmount: Number(receiptData.VoucherAmount || 0),
     Balance: Number(receiptData.Balance || 0),
     Details: items.map((i) => ({
       ItemName: i.ItemName || "Unknown",
@@ -199,6 +200,7 @@ ipcMain.handle("print-voucher", async (event, voucherData = {}) => {
     const voucherJson = {
       RefundID: String(voucherData.RefundID || ""),
       VoucherCode: String(voucherData.VoucherCode || ""),
+      ExpireDate: String(voucherData.ExpireDate || ""),
       BillID: String(voucherData.BillID || ""),
       RefundTotal: Number(voucherData.RefundTotal || 0),
       date: dateStr,
@@ -210,6 +212,18 @@ ipcMain.handle("print-voucher", async (event, voucherData = {}) => {
       "utf8",
     );
     console.log("Voucher JSON written to:", outJson);
+
+    // WriteOnly flow: just write voucher.json, don't run print.exe
+    if (voucherData.WriteOnly) {
+      console.log("Voucher WriteOnly mode — skipping print.exe");
+      return {
+        success: true,
+        printed: false,
+        writeOnly: true,
+        jsonPath: outJson,
+        voucher: voucherJson,
+      };
+    }
 
     const exePath = path.join(printingDir, "print.exe");
     if (!fs.existsSync(exePath)) {

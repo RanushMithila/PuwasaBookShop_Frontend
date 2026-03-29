@@ -888,6 +888,7 @@ const BillingPage = () => {
             CashAmount: parseFloat(cashPayAmount) || 0,
             CardAmount: parseFloat(cardAmount) || 0,
             ChequeAmount: parseFloat(chequeAmount) || 0,
+            VoucherAmount: Number(billData?.VoucherAmount || 0),
             Balance: Number(completeResp.data || 0),
             Details: selectedItems.map((it) => ({
               ItemName:
