@@ -29,6 +29,7 @@ import {
 import { getUsers } from "../services/UserService";
 import { getCustomerByPhone } from "../services/CustomerService";
 import { getCurrentUser } from "../services/AuthService";
+import { getVoucherByCode } from "../services/RefundService";
 
 import AlertModal from "../components/AlertModal";
 
@@ -100,6 +101,7 @@ const BillingPage = () => {
   const [cardAmount, setCardAmount] = useState("0.00");
   const [chequeAmount, setChequeAmount] = useState("0.00");
   const [voucherCode, setVoucherCode] = useState("");
+  const [voucherAmount, setVoucherAmount] = useState(0); // Validated voucher amount from API
   const [creditBalance, setCreditBalance] = useState(0);
   const [lastBillBalance, setLastBillBalance] = useState(0); // Persistent last bill balance
   const [userEditedCash, setUserEditedCash] = useState(false);
@@ -113,6 +115,7 @@ const BillingPage = () => {
   const cashInputRef = useRef();
   const cardInputRef = useRef();
   const chequeInputRef = useRef();
+  const voucherCodeRef = useRef();
   const helperSearchRef = useRef();
   const customerSearchRef = useRef();
   const saveButtonRef = useRef();
@@ -136,7 +139,8 @@ const BillingPage = () => {
   const showSaveButton =
     parseFloat(cashPayAmount || 0) > 0 ||
     parseFloat(cardAmount || 0) > 0 ||
-    parseFloat(chequeAmount || 0) > 0;
+    parseFloat(chequeAmount || 0) > 0 ||
+    (voucherCode && voucherCode.trim().length > 0);
 
   const handleCloseAlert = () => {
     setAlertConfig({ ...alertConfig, isOpen: false });
@@ -717,6 +721,74 @@ const BillingPage = () => {
         setInputsLocked(false);
         return;
       }
+
+      // Validate voucher FIRST before creating any bills (prevents abandoned bills)
+      let validatedVoucherAmount = 0;
+      if (voucherCode && voucherCode.trim().length > 0) {
+        try {
+          console.log("[VoucherValidation] Validating voucher code BEFORE bill creation:", voucherCode);
+          const voucherResp = await getVoucherByCode(voucherCode);
+          
+          if (!voucherResp || voucherResp.status !== true || !voucherResp.data) {
+            setAlertConfig({
+              isOpen: true,
+              title: "Invalid Voucher",
+              message: "Voucher code not found.",
+              type: "error",
+            });
+            setIsProcessing(false);
+            setInputsLocked(false);
+            return;
+          }
+
+          const voucher = voucherResp.data;
+          const now = new Date();
+          const expiryDate = new Date(voucher.ExpiryDate);
+
+          // Check if voucher is already used
+          if (voucher.isUsed === true) {
+            setAlertConfig({
+              isOpen: true,
+              title: "Voucher Already Used",
+              message: "This voucher has already been redeemed.",
+              type: "error",
+            });
+            setIsProcessing(false);
+            setInputsLocked(false);
+            return;
+          }
+
+          // Check if voucher is expired
+          if (expiryDate < now) {
+            setAlertConfig({
+              isOpen: true,
+              title: "Voucher Expired",
+              message: `This voucher expired on ${expiryDate.toLocaleString()}`,
+              type: "error",
+            });
+            setIsProcessing(false);
+            setInputsLocked(false);
+            return;
+          }
+
+          validatedVoucherAmount = Number(voucher.Value || 0);
+          setVoucherAmount(validatedVoucherAmount);
+          console.log("[VoucherValidation] Voucher validated. Amount:", validatedVoucherAmount);
+        } catch (voucherErr) {
+          console.error("[VoucherValidation] Failed:", voucherErr);
+          setAlertConfig({
+            isOpen: true,
+            title: "Voucher Validation Error",
+            message: voucherErr.message || "Failed to validate voucher.",
+            type: "error",
+          });
+          setIsProcessing(false);
+          setInputsLocked(false);
+          return;
+        }
+      }
+
+      // Now safe to proceed with bill creation (voucher already validated)
       // Ensure bill exists (create if missing)
       let billIdToUse = currentBillId;
       if (!billIdToUse) {
@@ -744,6 +816,8 @@ const BillingPage = () => {
             message: "Failed to create bill",
             type: "error",
           });
+          setIsProcessing(false);
+          setInputsLocked(false);
           return;
         }
         billIdToUse = createResp.data;
@@ -778,6 +852,8 @@ const BillingPage = () => {
               (resp?.error_message || resp?.message || JSON.stringify(resp)),
             type: "error",
           });
+          setIsProcessing(false);
+          setInputsLocked(false);
           return;
         }
       } else {
@@ -888,7 +964,8 @@ const BillingPage = () => {
             CashAmount: parseFloat(cashPayAmount) || 0,
             CardAmount: parseFloat(cardAmount) || 0,
             ChequeAmount: parseFloat(chequeAmount) || 0,
-            VoucherAmount: Number(billData?.VoucherAmount || 0),
+            VoucherCode: voucherCode,
+            VoucherAmount: validatedVoucherAmount || Number(billData?.VoucherAmount || 0),
             Balance: Number(completeResp.data || 0),
             Details: selectedItems.map((it) => ({
               ItemName:
@@ -941,6 +1018,8 @@ const BillingPage = () => {
         setCashPayAmount("0.00");
         setCardAmount("0.00");
         setChequeAmount("0.00");
+        setVoucherCode("");
+        setVoucherAmount(0);
         setUserEditedCash(false);
         setUserEditedCard(false);
         setUserEditedCheque(false);
@@ -1330,6 +1409,7 @@ const BillingPage = () => {
     setCardAmount("0.00");
     setChequeAmount("0.00");
     setVoucherCode("");
+    setVoucherAmount(0);
     setCreditBalance(0);
     setIsLoadedFromTemp(false);
     // Reset local customer inputs as well
@@ -1924,9 +2004,9 @@ const BillingPage = () => {
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                // Move focus to Save button (do not click)
+                // Move focus to Voucher Code
                 e.preventDefault();
-                saveButtonRef.current?.focus();
+                voucherCodeRef.current?.focus();
               }
             }}
             placeholder="0.00"
@@ -1952,6 +2032,7 @@ const BillingPage = () => {
               }
             }}
             placeholder="Enter voucher code"
+            ref={voucherCodeRef}
             readOnly={inputsLocked}
           />
         </div>

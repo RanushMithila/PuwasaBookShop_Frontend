@@ -326,7 +326,8 @@ const RefundPage = () => {
                   return (
                     <tr
                       key={item.DetailID}
-                      className={`border-b last:border-b-0 transition ${
+                      onClick={() => toggleItem(item.DetailID)}
+                      className={`border-b last:border-b-0 transition cursor-pointer ${
                         sel.checked
                           ? "bg-indigo-50 hover:bg-indigo-100"
                           : "hover:bg-gray-50"
@@ -337,6 +338,7 @@ const RefundPage = () => {
                           type="checkbox"
                           checked={sel.checked}
                           onChange={() => toggleItem(item.DetailID)}
+                          onClick={(e) => e.stopPropagation()}
                           className="w-4 h-4 accent-indigo-600 cursor-pointer"
                         />
                       </td>
@@ -356,6 +358,7 @@ const RefundPage = () => {
                           max={item.QTY}
                           value={sel.refundQty}
                           disabled={!sel.checked}
+                          onClick={(e) => e.stopPropagation()}
                           onChange={(e) =>
                             updateRefundQty(
                               item.DetailID,
