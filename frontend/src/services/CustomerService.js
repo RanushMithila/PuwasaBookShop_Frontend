@@ -1,6 +1,21 @@
 import httpClient from "./HttpClient";
 
 /**
+ * Registers a new customer.
+ * @param {object} customerData - The customer registration data.
+ * @returns {Promise<object>} The API response.
+ */
+export const registerCustomer = async (customerData) => {
+  try {
+    const response = await httpClient.post("/customer/register", customerData, true);
+    return response;
+  } catch (error) {
+    console.error("Failed to register customer:", error);
+    throw error;
+  }
+};
+
+/**
  * Fetches a customer by their phone number.
  * @param {string} phone - The phone number to search for.
  * @returns {Promise<object>} The API response containing customer data.

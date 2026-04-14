@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { sendRefundNotification } from "../services/RefundService";
 
 const RefundSuccessModal = ({
   isOpen,
@@ -16,6 +17,7 @@ const RefundSuccessModal = ({
   const [email, setEmail] = useState("");
   const [emailSent, setEmailSent] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
+  const [emailError, setEmailError] = useState("");
   const closeButtonRef = useRef(null);
   const emailInputRef = useRef(null);
 
@@ -25,6 +27,7 @@ const RefundSuccessModal = ({
       setShowEmailForm(false);
       setEmail("");
       setEmailSent(false);
+      setEmailError("");
       setTimeout(() => closeButtonRef.current?.focus(), 50);
     }
   }, [isOpen]);
@@ -72,18 +75,21 @@ const RefundSuccessModal = ({
     }
   };
 
-  // Dummy send email
-  const handleSendEmail = () => {
+  // Send voucher notification email via API
+  const handleSendEmail = async () => {
     if (!email.trim()) return;
     setEmailSending(true);
-    // Simulate sending — just a dummy delay
-    setTimeout(() => {
-      setEmailSending(false);
+    setEmailError("");
+    try {
+      await sendRefundNotification(refundId, email.trim());
       setEmailSent(true);
-      console.log(
-        `[VoucherEmail] Dummy email sent to ${email} with voucher ${voucherCode}`,
-      );
-    }, 1200);
+      console.log(`[VoucherEmail] Notification sent to ${email} for refund ${refundId}`);
+    } catch (err) {
+      console.error("[VoucherEmail] Failed to send notification:", err);
+      setEmailError("Failed to send email. Please try again.");
+    } finally {
+      setEmailSending(false);
+    }
   };
 
   return (
@@ -186,12 +192,15 @@ const RefundSuccessModal = ({
                   ref={emailInputRef}
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setEmailError("");
+                  }}
                   placeholder="customer@email.com"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleSendEmail();
                   }}
-                  disabled={emailSent}
+                  disabled={emailSent || emailSending}
                   className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
                 <button
@@ -212,6 +221,12 @@ const RefundSuccessModal = ({
                       : "Send"}
                 </button>
               </div>
+              {emailError && (
+                <p className="text-xs text-red-500 mt-1">{emailError}</p>
+              )}
+              {emailSent && (
+                <p className="text-xs text-emerald-600 mt-1">✓ Voucher notification sent successfully.</p>
+              )}
             </div>
           </div>
         )}

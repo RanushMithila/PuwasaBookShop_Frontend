@@ -20,7 +20,6 @@ import {
   getBill,
   cancelBill,
   getTemporaryBills,
-  getInventory,
 } from "../services/BillingService";
 import {
   checkRegisterOpen,
@@ -554,8 +553,28 @@ const BillingPage = () => {
     try {
       const resp = await getItemByBarcode(code, LocationID);
       if (resp && resp.status === true && Array.isArray(resp.data)) {
-        setSuggestions(resp.data);
-        setHighlightIndex(0);
+        // Filter client-side: only keep items whose barcode contains the
+        // entered code. The backend does fuzzy matching on names too, so
+        // without this filter items like "SINHALA GRADE-1" would appear
+        // when the user types "1" even though no barcode matches.
+        const barcodeOnly = resp.data.filter(
+          (item) =>
+            item.barcode &&
+            item.barcode.toString().toLowerCase().startsWith(code.toLowerCase()),
+        );
+
+        if (barcodeOnly.length > 0) {
+          setSuggestions(barcodeOnly);
+          setHighlightIndex(0);
+        } else {
+          setSuggestions([]);
+          setAlertConfig({
+            isOpen: true,
+            title: "Item Not Found",
+            message: "No item found for the given barcode.",
+            type: "error",
+          });
+        }
       } else {
         setSuggestions([]);
         setAlertConfig({
@@ -1777,6 +1796,11 @@ const BillingPage = () => {
                           return;
                         }
                         setItemCode(val.toUpperCase());
+                        // Clear suggestions when input is cleared via backspace
+                        if (!val) {
+                          setSuggestions([]);
+                          setHighlightIndex(-1);
+                        }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && suggestions.length === 0) {

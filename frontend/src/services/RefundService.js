@@ -22,6 +22,28 @@ export const processRefund = async (refundData) => {
 };
 
 /**
+ * Sends a refund notification email to the customer.
+ * @param {number} refundId - The refund ID returned from processRefund.
+ * @param {string} email - The customer's email address.
+ * @returns {Promise<object>} The API response.
+ */
+export const sendRefundNotification = async (refundId, email) => {
+  try {
+    console.log("[sendRefundNotification] Sending notification:", { refundId, email });
+    const response = await httpClient.post(
+      `/refund/refund/notify?refund_id=${encodeURIComponent(refundId)}&email=${encodeURIComponent(email)}`,
+      {},
+      true,
+    );
+    console.log("[sendRefundNotification] Response:", response);
+    return response;
+  } catch (error) {
+    console.error("[sendRefundNotification] Failed:", error);
+    throw error;
+  }
+};
+
+/**
  * Fetches voucher details by voucher code.
  * @param {string} voucherCode - The voucher code to look up.
  * @returns {Promise<object>} The API response containing Code, Value, ExpiryDate, etc.

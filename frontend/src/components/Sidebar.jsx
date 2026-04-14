@@ -17,6 +17,7 @@ const Sidebar = () => {
   const menuItems = [
     { path: "/billing", label: "Billing", icon: "🧾" },
     { path: "/refund", label: "Refund", icon: "↩️" },
+    { path: "/customer", label: "Customer", icon: "👤" },
   ];
 
   return (

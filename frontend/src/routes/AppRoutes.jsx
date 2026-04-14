@@ -2,6 +2,7 @@ import { HashRouter, Routes, Route } from "react-router-dom";
 import LoginPage from "../pages/LoginPage";
 import BillingPage from "../pages/BillingPage";
 import RefundPage from "../pages/RefundPage";
+import CustomerPage from "../pages/CustomerPage";
 import Layout from "../components/Layout";
 
 const AppRoutes = () => {
@@ -26,6 +27,14 @@ const AppRoutes = () => {
           element={
             <Layout>
               <RefundPage />
+            </Layout>
+          }
+        />
+        <Route
+          path="/customer"
+          element={
+            <Layout>
+              <CustomerPage />
             </Layout>
           }
         />
