@@ -60,7 +60,21 @@ const TemporaryBillsModal = ({
                   bill.dateCreated ||
                   bill.DateCreated ||
                   null;
-                const created = createdRaw ? new Date(createdRaw) : null;
+                // API returns UTC timestamps without timezone suffix — append Z so
+                // JS parses them as UTC and toLocaleString() converts to local time.
+                const created = createdRaw
+                  ? (() => {
+                      if (typeof createdRaw !== "string") return new Date(createdRaw);
+                      // Already has timezone info (Z, +05:30, -04:00 etc.)
+                      if (/[Z]$/i.test(createdRaw) || /[+-]\d{2}:\d{2}$/.test(createdRaw))
+                        return new Date(createdRaw);
+                      // Normalize space-separated to T-separated and append Z
+                      const normalized = createdRaw.includes("T")
+                        ? createdRaw
+                        : createdRaw.replace(" ", "T");
+                      return new Date(normalized + "Z");
+                    })()
+                  : null;
 
                 // Safely read requested fields with sensible fallbacks
                 const billId = bill.BillID ?? bill.billId ?? bill.id ?? "—";

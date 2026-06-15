@@ -47,7 +47,7 @@ const SummaryBox = () => {
       const billData = {
         LocationID: LocationID,
         CustomerID: customer?.id,
-        CashierID: user?.id,
+        CashierID: user?.id || user?.UserID,
       };
 
       const billResponse = await createBill(billData); // Ensure createBill is defined and imported
@@ -79,7 +79,7 @@ const SummaryBox = () => {
       const receiptData = {
         BillID: storeBillId,
         date: new Date().toISOString().replace("T", " ").slice(0, 19),
-        CashierID: user?.id || 1,
+        CashierID: user?.id || user?.UserID || 1,
         CustomerName:
           `${customer?.firstName || ""} ${customer?.lastName || ""}`.trim() ||
           "Unknown",
@@ -145,7 +145,7 @@ const SummaryBox = () => {
       const billData = {
         LocationID: LocationID,
         CustomerID: customer?.id,
-        CashierID: user?.id,
+        CashierID: user?.id || user?.UserID,
       };
 
       const createResp = await createBill(billData);

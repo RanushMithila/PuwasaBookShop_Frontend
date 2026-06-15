@@ -81,7 +81,7 @@ const AlertModal = ({ isOpen, onClose, title, message, type = "info" }) => {
     }[type] || config.info;
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-[100] animate-in fade-in duration-200">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-[200] animate-in fade-in duration-200">
       <div
         className={`bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border ${config.borderColor} animate-in zoom-in-95 duration-200`}
       >

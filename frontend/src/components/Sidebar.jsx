@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import useTenantStore from "../store/TenantStore";
 
 // Get the correct base path for assets in Electron
 const getAssetPath = (path) => {
@@ -13,6 +15,17 @@ const getAssetPath = (path) => {
 const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { logoUrl, fetchSettings } = useTenantStore();
+
+  // Fetch tenant settings (including logo) on mount
+  useEffect(() => {
+    fetchSettings().catch((err) =>
+      console.warn("Could not load tenant settings for logo:", err)
+    );
+  }, [fetchSettings]);
+
+  // Use API logo if available, otherwise fall back to local image
+  const logoSrc = logoUrl || getAssetPath("/PUWASA LOGO.jpg");
 
   const menuItems = [
     { path: "/billing", label: "Billing", icon: "🧾" },
@@ -24,9 +37,14 @@ const Sidebar = () => {
     <div className="w-[84px] bg-gradient-to-b from-white to-gray-50 border-r flex flex-col items-center py-4">
       <div className="w-12 h-12 rounded-xl overflow-hidden shadow mb-5 ring-1 ring-gray-200">
         <img
-          src={getAssetPath("/PUWASA LOGO.jpg")}
+          src={logoSrc}
           alt="Logo"
           className="w-full h-full object-cover"
+          onError={(e) => {
+            // If the API logo fails to load, fall back to local image
+            e.target.onerror = null;
+            e.target.src = getAssetPath("/PUWASA LOGO.jpg");
+          }}
         />
       </div>
       <nav className="flex flex-col gap-3 w-full px-2">

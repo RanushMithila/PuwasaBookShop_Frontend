@@ -42,8 +42,8 @@ const RefundPage = () => {
 
   // ── Load Bill ──
   const handleLoadBill = async () => {
-    const id = parseInt(billIdInput, 10);
-    if (!id || id <= 0) {
+    const id = billIdInput.trim();
+    if (!id) {
       setAlertConfig({
         isOpen: true,
         title: "Invalid Bill ID",
@@ -250,8 +250,7 @@ const RefundPage = () => {
           <label className="text-sm font-medium text-gray-700">Bill ID</label>
           <input
             ref={billIdRef}
-            type="number"
-            min="1"
+            type="text"
             value={billIdInput}
             onChange={(e) => setBillIdInput(e.target.value)}
             onKeyDown={(e) => {

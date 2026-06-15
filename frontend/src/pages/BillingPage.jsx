@@ -65,6 +65,7 @@ const BillingPage = () => {
   const [registerSessionId, setRegisterSessionId] = useState(null);
   const [temporaryBills, setTemporaryBills] = useState([]);
   const [helpers, setHelpers] = useState([]);
+  const [isWholesale, setIsWholesale] = useState(false);
   const [selectedHelperID, setSelectedHelperID] = useState(null);
   const [helperSearchTerm, setHelperSearchTerm] = useState("");
   const [showHelperSuggestions, setShowHelperSuggestions] = useState(false);
@@ -87,7 +88,7 @@ const BillingPage = () => {
   // Customer
   const [customerName, setCustomerName] = useState("Customer");
   const [customerPhone, setCustomerPhone] = useState("1111111111");
-  const [selectedCustomerID, setSelectedCustomerID] = useState(1);
+  const [selectedCustomerID, setSelectedCustomerID] = useState(null);
   const locationName = "Polonnaruwa";
 
   // Search / item code and suggestions
@@ -232,6 +233,10 @@ const BillingPage = () => {
     // Second priority: Try to get from user object in AuthStore
     if (user?.id) {
       return user.id;
+    }
+    // The profile API returns UserID (capital), not id
+    if (user?.UserID) {
+      return user.UserID;
     }
     // Third priority: Try to extract from JWT token
     if (!accessToken) return null;
@@ -427,7 +432,7 @@ const BillingPage = () => {
       setIsSearchingCustomer(false);
       if (customerPhone.length === 0) {
         setCustomerName("Customer");
-        setSelectedCustomerID(1);
+        setSelectedCustomerID(null);
       }
     }
   }, [customerPhone]);
@@ -827,6 +832,7 @@ const BillingPage = () => {
           CashierID: cashierId,
           HelperID: selectedHelperID,
           RegisterID: deviceId,
+          IsWholesale: isWholesale,
         });
         if (!(createResp && createResp.status === true && createResp.data)) {
           setAlertConfig({
@@ -931,7 +937,7 @@ const BillingPage = () => {
         setItemCode("");
         setCustomerName("Customer");
         setCustomerPhone("");
-        setSelectedCustomerID(1);
+        setSelectedCustomerID(null);
         setCashPayAmount("0.00");
         setCardAmount("0.00");
         setChequeAmount("0.00");
@@ -1082,7 +1088,7 @@ const BillingPage = () => {
       const createResp = await createBill({
         LocationID: LocationID,
         CustomerID: selectedCustomerID,
-        CashierID: user?.id,
+        CashierID: cashierId,
         HelperID: selectedHelperID,
         RegisterID: deviceId,
       });
@@ -1143,7 +1149,7 @@ const BillingPage = () => {
       setItemCode("");
       setCustomerName("Customer");
       setCustomerPhone("");
-      setSelectedCustomerID(1);
+      setSelectedCustomerID(null);
       setCashPayAmount("0.00");
       setCardAmount("0.00");
       setChequeAmount("0.00");
@@ -1436,7 +1442,7 @@ const BillingPage = () => {
     setCustomerPhone("");
     setCustomerResults([]);
     setShowCustomerSuggestions(false);
-    setSelectedCustomerID(1);
+    setSelectedCustomerID(null);
     setSelectedHelperID(null);
     setHelperSearchTerm("");
     // Focus item code for convenience
@@ -1557,6 +1563,19 @@ const BillingPage = () => {
             }`}
           >
             Search by name
+          </button>
+          <button
+            onClick={() => setIsWholesale((prev) => !prev)}
+            disabled={isProcessing}
+            className={`px-3 py-2 text-sm lg:px-4 lg:py-2 rounded-lg border-none transition font-semibold ${
+              isProcessing
+                ? "opacity-50 cursor-not-allowed"
+                : isWholesale
+                ? "bg-amber-500 text-white hover:bg-amber-600"
+                : "bg-gray-300 text-gray-700 hover:bg-gray-400"
+            }`}
+          >
+            {isWholesale ? "Wholesale" : "Retail"}
           </button>
           <div className="hidden lg:block lg:flex-1"></div>
         </div>

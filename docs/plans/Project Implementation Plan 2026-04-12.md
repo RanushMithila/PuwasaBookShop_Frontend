@@ -78,6 +78,7 @@ Puwasa Bookshop POS is a desktop Point of Sale application built for bookshop re
 | **Refund**             | ✅ Complete      | `/refund`    | ↩️           |
 | **Customer Registration** | ✅ Complete   | `/customer`  | 👤           |
 | **Cash Register**      | ✅ Complete      | (in Billing) | —            |
+| **Tenant Settings**    | ✅ Complete      | (Global)     | —            |
 
 ---
 
@@ -166,6 +167,19 @@ Puwasa Bookshop POS is a desktop Point of Sale application built for bookshop re
 | Cash count (closing)             | ✅     |
 | Denomination-based counting      | ✅     |
 | Register open/closed state check | ✅     |
+
+---
+
+### 6. Tenant Settings Module
+**Status: ✅ Complete** — Added 2026-06-13
+
+| Feature                          | Status |
+|----------------------------------|--------|
+| API Integration (`/tenant/settings`) | ✅ |
+| Dynamic Logo loading             | ✅     |
+| Dynamic Tenant Name loading      | ✅     |
+| Fallback to local assets         | ✅     |
+| Zustand state management         | ✅     |
 
 ---
 

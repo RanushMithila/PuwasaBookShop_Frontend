@@ -12,7 +12,7 @@ export default defineConfig({
     strictPort: true, // Exit if port is already in use
     proxy: {
       "/api": {
-        target: "http://18.141.63.39/",
+        target: "https://18-141-63-39.sslip.io",
         changeOrigin: true,
         secure: false,
       },

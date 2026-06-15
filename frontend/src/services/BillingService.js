@@ -113,7 +113,7 @@ export const getItemByBarcode = async (barcode, locationId) => {
     console.log(`Getting item by barcode: ${barcode}, location: ${locationId}`);
     const response = await httpClient.get(
       `/inventory/getItem/${barcode}/${locationId}`,
-      false,
+      true,
     );
     console.log("Get item by barcode response:", response);
     return response;
@@ -136,7 +136,7 @@ export const getItemQuantity = async (barcode, locationId) => {
     );
     const response = await httpClient.get(
       `/inventory/getItemQTY/${barcode}/${locationId}`,
-      false,
+      true,
     );
     console.log("Get item quantity response:", response);
     return response;
