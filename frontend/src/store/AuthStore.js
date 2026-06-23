@@ -12,6 +12,8 @@ const useAuthStore = create(
       accessToken: null, // JWT access token
       refreshToken: null, // JWT refresh token
       deviceId: null, // Machine ID for cash register
+      tenantInfo: null, // Will hold { tenant_name, contact_email, address, city }
+      currentUserName: null, // Display name of the logged-in user (firstname + lastname)
 
       // Actions
       setSession: (sessionData) => {
@@ -60,6 +62,16 @@ const useAuthStore = create(
         set({ deviceId: deviceId || null });
       },
 
+      // Set tenant business info (from /tenant/me API)
+      setTenantInfo: (info) => {
+        set({ tenantInfo: info || null });
+      },
+
+      // Set current user's display name
+      setCurrentUserName: (name) => {
+        set({ currentUserName: name || null });
+      },
+
       // Clear session and tokens together - no more manual coordination needed
       clearSession: () => {
         set({
@@ -69,6 +81,8 @@ const useAuthStore = create(
           accessToken: null,
           refreshToken: null,
           deviceId: null,
+          tenantInfo: null,
+          currentUserName: null,
         });
       },
 

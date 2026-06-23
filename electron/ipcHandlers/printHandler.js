@@ -34,6 +34,11 @@ function runPythonPrint(event, receiptData) {
   const billJson = {
     BillID: String(billId),
     date: dateStr,
+    ShopName: receiptData.ShopName || "",
+    ShopEmail: receiptData.ShopEmail || "",
+    ShopPhone: receiptData.ShopPhone || "",
+    ShopAddress: receiptData.ShopAddress || "",
+    ShopCity: receiptData.ShopCity || "",
     CashierID: String(receiptData.CashierID || "1"),
     CashierName: receiptData.CashierName || "",
     CustomerName: receiptData.CustomerName || "Unknown",

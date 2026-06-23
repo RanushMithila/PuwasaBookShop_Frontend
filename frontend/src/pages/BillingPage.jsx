@@ -40,6 +40,7 @@ const BillingPage = () => {
   const selectedItems = useBillingStore((s) => s.selectedItems);
   const addItem = useBillingStore((s) => s.addItem);
   const removeItem = useBillingStore((s) => s.removeItem);
+  const updateItemPrice = useBillingStore((s) => s.updateItemPrice);
   const setCurrentBillId = useBillingStore((s) => s.setCurrentBillId);
   const resetTransaction = useBillingStore((s) => s.resetTransaction);
   const currentBillId = useBillingStore((s) => s.currentBillId);
@@ -51,6 +52,8 @@ const BillingPage = () => {
   const storedLocationID = useAuthStore((s) => s.LocationID);
   const LocationID = storedLocationID ? parseInt(storedLocationID, 10) : null; // No fallback - must come from API
   const deviceId = useAuthStore((s) => s.deviceId);
+  const tenantInfo = useAuthStore((s) => s.tenantInfo);
+  const currentUserName = useAuthStore((s) => s.currentUserName);
 
   // Cashier ID from API
   const [apiCashierId, setApiCashierId] = useState(null);
@@ -216,8 +219,9 @@ const BillingPage = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Extract cashier name from token
+  // Extract cashier name — prefer display name fetched at login, fall back to JWT email
   const getCashierName = () => {
+    if (currentUserName) return currentUserName;
     if (!accessToken) return "";
     const details = TokenService.getUserDetails(accessToken);
     return details?.sub || details?.username || details?.name || "Unknown";
@@ -520,6 +524,19 @@ const BillingPage = () => {
     }
   };
 
+  // When wholesale mode is toggled, update all existing items' prices
+  useEffect(() => {
+    const currentItems = useBillingStore.getState().selectedItems;
+    currentItems.forEach((item) => {
+      const retailPrice = item.itemRetailPrice || item.itemUnitPrice || 0;
+      const wholesalePrice = item.itemWholeSalePrice || retailPrice;
+      const newPrice = isWholesale ? wholesalePrice : retailPrice;
+      if (item.itemUnitPrice !== newPrice) {
+        updateItemPrice(item.inventoryID, newPrice);
+      }
+    });
+  }, [isWholesale]);
+
   // Item code search with keyboard navigation
   useEffect(() => {
     const handler = (e) => {
@@ -683,10 +700,17 @@ const BillingPage = () => {
       // addItem in the store handles both cases:
       // - If item exists: increments QTY by 1
       // - If item is new: adds it with QTY 1
+      // Determine effective price based on wholesale mode
+      const retailPrice = item.itemUnitPrice || 0;
+      const wholesalePrice = item.itemWholeSalePrice || retailPrice; // Fallback to retail if no wholesale price
+      const effectivePrice = isWholesale ? wholesalePrice : retailPrice;
+
       addItem({
         inventoryID: item.inventoryID,
         itemName: item.itemName,
-        itemUnitPrice: item.itemUnitPrice,
+        itemUnitPrice: effectivePrice,
+        itemRetailPrice: retailPrice,       // Always store original retail price
+        itemWholeSalePrice: wholesalePrice,  // Always store wholesale price
         itemCostPrice: item.itemCostPrice,
         barcode: item.barcode,
         itemDescription: item.itemDescription,
@@ -694,7 +718,7 @@ const BillingPage = () => {
         locationID: item.locationID,
         QTY: 1,
         Discount: 0,
-        amount: item.itemUnitPrice,
+        amount: effectivePrice,
       });
       setItemCode("");
       setSuggestions([]);
@@ -976,8 +1000,13 @@ const BillingPage = () => {
           const finalPayload = {
             BillID: String(billIdToUse),
             date: dateStr,
+            ShopName: tenantInfo?.tenant_name || "",
+            ShopEmail: tenantInfo?.contact_email || "",
+            ShopPhone: tenantInfo?.contact_phone || "",
+            ShopAddress: tenantInfo?.address || "",
+            ShopCity: tenantInfo?.city || "",
             CashierID: String(billData?.CashierID || cashierId || ""),
-            CashierName: billData?.CashierName || cashierName || "",
+            CashierName: currentUserName || billData?.CashierName || cashierName || "",
             CashierFName: billData?.CashierFName || "",
             CashierLName: billData?.CashierLName || "",
             CustomerName: billData?.CustomerName || customerName || "",
@@ -1439,7 +1468,7 @@ const BillingPage = () => {
     setIsLoadedFromTemp(false);
     // Reset local customer inputs as well
     setCustomerName("Customer");
-    setCustomerPhone("");
+    setCustomerPhone("1111111111");
     setCustomerResults([]);
     setShowCustomerSuggestions(false);
     setSelectedCustomerID(null);

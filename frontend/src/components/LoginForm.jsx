@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { login, getProfile } from "../services/AuthService";
+import { login, getProfile, getCurrentUser } from "../services/AuthService";
+import { getTenantInfo } from "../services/TenantService";
+import { getUsers } from "../services/UserService";
 import {
   getMachineId,
   getRegisterByDeviceId,
@@ -19,6 +21,8 @@ const LoginForm = () => {
   const setTokens = useAuthStore((state) => state.setTokens);
   const setDeviceId = useAuthStore((state) => state.setDeviceId);
   const setSession = useAuthStore((state) => state.setSession);
+  const setTenantInfo = useAuthStore((state) => state.setTenantInfo);
+  const setCurrentUserName = useAuthStore((state) => state.setCurrentUserName);
 
   // Cash register popup state
   const [showRegisterPopup, setShowRegisterPopup] = useState(false);
@@ -70,6 +74,62 @@ const LoginForm = () => {
       const { access_token, refresh_token } = await login(username, password);
       setTokens(access_token, refresh_token);
       console.log("Login successful, tokens stored");
+
+      // Fetch tenant info and user display name in parallel (non-blocking)
+      // These are stored in AuthStore for use in billing/receipts
+      try {
+        const [tenantResp, userResp, usersResp] = await Promise.allSettled([
+          getTenantInfo(),
+          getCurrentUser(),
+          getUsers(),
+        ]);
+
+        // Store tenant info
+        if (tenantResp.status === "fulfilled" && tenantResp.value?.status === true && tenantResp.value?.data) {
+          const t = tenantResp.value.data;
+          setTenantInfo({
+            tenant_name: t.tenant_name || "",
+            contact_email: t.contact_email || "",
+            contact_phone: t.contact_phone || "",
+            address: t.address || "",
+            city: t.city || "",
+          });
+          console.log("[LoginForm] Tenant info stored:", t.tenant_name);
+        } else {
+          console.warn("[LoginForm] Could not fetch tenant info");
+        }
+
+        // Determine user display name by matching UserID from /user/me against /user/users
+        let displayName = null;
+        const currentUserId =
+          userResp.status === "fulfilled" && userResp.value?.status === true && userResp.value?.data
+            ? userResp.value.data.UserID
+            : null;
+        const userEmail =
+          userResp.status === "fulfilled" && userResp.value?.data?.Email
+            ? userResp.value.data.Email
+            : null;
+
+        if (currentUserId && usersResp.status === "fulfilled" && usersResp.value?.status === true && Array.isArray(usersResp.value.data)) {
+          const matchedUser = usersResp.value.data.find((u) => u.UserID === currentUserId);
+          if (matchedUser) {
+            const fname = matchedUser.firstname || "";
+            const lname = matchedUser.lastname || "";
+            const fullName = `${fname} ${lname}`.trim();
+            displayName = fullName || matchedUser.Email || userEmail;
+          }
+        }
+
+        // Fallback to email from /user/me if no name found
+        if (!displayName) {
+          displayName = userEmail || username;
+        }
+
+        setCurrentUserName(displayName);
+        console.log("[LoginForm] User display name stored:", displayName);
+      } catch (fetchErr) {
+        console.warn("[LoginForm] Non-critical: Failed to fetch tenant/user info:", fetchErr);
+      }
 
       // Step 2: Get machine ID
       let deviceId;

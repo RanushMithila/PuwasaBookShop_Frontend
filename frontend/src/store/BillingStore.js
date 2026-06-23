@@ -60,6 +60,16 @@ const useBillingStore = create((set, get) => ({
       ),
     })),
 
+  // Updates the effective unit price of a specific item (used when toggling wholesale/retail mode)
+  updateItemPrice: (inventoryID, newPrice) =>
+    set((state) => ({
+      selectedItems: state.selectedItems.map((item) =>
+        String(item.inventoryID) === String(inventoryID)
+          ? { ...item, itemUnitPrice: newPrice }
+          : item,
+      ),
+    })),
+
   // Updates the discount amount (absolute rupees) of a specific item
   updateItemDiscount: (inventoryID, discount) =>
     set((state) => ({

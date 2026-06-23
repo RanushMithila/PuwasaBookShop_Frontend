@@ -14,3 +14,18 @@ export const getTenantSettings = async () => {
     throw error;
   }
 };
+
+/**
+ * Fetches tenant business information (name, email, address, city, etc.).
+ * GET /tenant/me
+ * @returns {Promise<object>} The tenant info response.
+ */
+export const getTenantInfo = async () => {
+  try {
+    const response = await httpClient.get("/tenant/me", true);
+    return response;
+  } catch (error) {
+    console.error("Failed to fetch tenant info:", error);
+    throw error;
+  }
+};
