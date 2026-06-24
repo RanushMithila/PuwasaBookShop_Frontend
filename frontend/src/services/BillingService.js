@@ -7,19 +7,23 @@ import httpClient from "./HttpClient";
  */
 export const createBill = async (billingData) => {
   try {
+    // HelperID is optional — strip it if null so the backend doesn't reject it.
+    // CustomerID is REQUIRED by the backend; callers must ensure it's a valid UUID.
+    const cleanedData = { ...billingData };
+    if (cleanedData.HelperID == null) delete cleanedData.HelperID;
     console.log("=== CREATE BILLING API CALL ===");
     console.log("Endpoint: POST /billing/billing");
-    console.log("LocationID:", billingData.LocationID);
-    console.log("RegisterID:", billingData.RegisterID);
+    console.log("LocationID:", cleanedData.LocationID);
+    console.log("RegisterID:", cleanedData.RegisterID);
     console.log("================================");
-    console.log("Creating bill with data:", billingData);
+    console.log("Creating bill with data:", cleanedData);
     console.log(
       "[createBill] Full request body:",
-      JSON.stringify(billingData, null, 2),
+      JSON.stringify(cleanedData, null, 2),
     );
     const response = await httpClient.post(
       "/billing/billing",
-      billingData,
+      cleanedData,
       true,
     );
     console.log("Create bill response:", response);
@@ -80,10 +84,14 @@ export const getBill = async (billId) => {
  */
 export const completeBill = async (billId, paymentData) => {
   try {
-    console.log(`Completing bill ${billId} with payment:`, paymentData);
+    // Strip null/undefined values — backend rejects null for UUID fields like CustomerID.
+    const cleanedData = Object.fromEntries(
+      Object.entries(paymentData).filter(([, v]) => v != null)
+    );
+    console.log(`Completing bill ${billId} with payment:`, cleanedData);
     console.log(
       "[completeBill] Full request body:",
-      JSON.stringify(paymentData, null, 2),
+      JSON.stringify(cleanedData, null, 2),
     );
     console.log(
       "[completeBill] Endpoint:",
@@ -91,7 +99,7 @@ export const completeBill = async (billId, paymentData) => {
     );
     const response = await httpClient.post(
       `/billing/billing/complete/${billId}`,
-      paymentData,
+      cleanedData,
       true,
     );
     console.log("Complete bill response:", response);

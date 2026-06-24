@@ -840,19 +840,80 @@ const BillingPage = () => {
       // Ensure bill exists (create if missing)
       let billIdToUse = currentBillId;
       if (!billIdToUse) {
+        // If CustomerID is missing (e.g. handleClear's async fetch didn't finish),
+        // attempt to resolve it from the current phone number before giving up.
+        let customerIdToUse = selectedCustomerID;
+        if (!customerIdToUse) {
+          const rawDigits = customerPhone.replace(/\D/g, "");
+          if (rawDigits.length >= 5) {
+            try {
+              console.log("[CreateBill] CustomerID is null — resolving from phone:", rawDigits);
+              const custResp = await getCustomerByPhone(rawDigits);
+              console.log("[CreateBill] Customer API response:", JSON.stringify(custResp, null, 2));
+              if (custResp && custResp.data) {
+                let customers = [];
+                if (Array.isArray(custResp.data)) {
+                  customers = custResp.data.filter((c) => c && Object.keys(c).length > 0);
+                } else if (typeof custResp.data === "object" && Object.keys(custResp.data).length > 0) {
+                  customers = [custResp.data];
+                }
+                console.log("[CreateBill] Parsed customers:", customers.length, customers);
+
+                if (customers.length > 0) {
+                  // Try exact phone match first (handle various field name casings)
+                  const getPhone = (c) => c.phone || c.Phone || c.PhoneNumber || c.phoneNumber || "";
+                  const getId = (c) => c.customerid || c.customerId || c.CustomerID || c.CustomerID || c.customer_id || c.id || c.ID;
+                  const getName = (c) => c.firstname || c.firstName || c.FirstName || c.first_name || c.name || c.Name || "Customer";
+
+                  let match = customers.find((c) => getPhone(c).replace(/\D/g, "") === rawDigits);
+                  // If no exact phone match, just use the first customer returned
+                  if (!match && customers.length > 0) {
+                    console.log("[CreateBill] No exact phone match, using first customer");
+                    match = customers[0];
+                  }
+                  if (match) {
+                    customerIdToUse = getId(match);
+                    if (customerIdToUse) {
+                      setSelectedCustomerID(customerIdToUse);
+                      setCustomerName(getName(match));
+                      console.log("[CreateBill] Resolved customer:", customerIdToUse, getName(match));
+                    } else {
+                      console.error("[CreateBill] Customer found but no ID field. Keys:", Object.keys(match));
+                    }
+                  }
+                }
+              }
+            } catch (custErr) {
+              console.error("[CreateBill] Customer resolve failed:", custErr);
+            }
+          }
+        }
+
+        if (!customerIdToUse) {
+          setAlertConfig({
+            isOpen: true,
+            title: "Customer Required",
+            message: "No customer selected. Please enter a valid customer phone number.",
+            type: "error",
+          });
+          setIsProcessing(false);
+          setInputsLocked(false);
+          return;
+        }
+
         // Debug logging to verify user and customer data
         console.log("[CreateBill] Debug Info:");
         console.log("  - user object:", user);
         console.log("  - user?.id:", user?.id);
         console.log("  - cashierId (from token):", cashierId);
-        console.log("  - selectedCustomerID:", selectedCustomerID);
+        console.log("  - selectedCustomerID:", customerIdToUse);
         console.log("  - selectedHelperID:", selectedHelperID);
         console.log("  - LocationID:", LocationID);
         console.log("  - deviceId:", deviceId);
 
         const createResp = await createBill({
           LocationID: LocationID,
-          CustomerID: selectedCustomerID,
+          CustomerID: customerIdToUse,
           CashierID: cashierId,
           HelperID: selectedHelperID,
           RegisterID: deviceId,
@@ -960,7 +1021,7 @@ const BillingPage = () => {
         setIsLoadedFromTemp(false);
         setItemCode("");
         setCustomerName("Customer");
-        setCustomerPhone("");
+        setCustomerPhone("1111111111");
         setSelectedCustomerID(null);
         setCashPayAmount("0.00");
         setCardAmount("0.00");
@@ -1068,7 +1129,7 @@ const BillingPage = () => {
         setIsLoadedFromTemp(false);
         setItemCode("");
         setCustomerName("Customer");
-        setCustomerPhone("");
+        setCustomerPhone("1111111111");
         setCashPayAmount("0.00");
         setCardAmount("0.00");
         setChequeAmount("0.00");
@@ -1177,7 +1238,7 @@ const BillingPage = () => {
       setCurrentBillId(null);
       setItemCode("");
       setCustomerName("Customer");
-      setCustomerPhone("");
+      setCustomerPhone("1111111111");
       setSelectedCustomerID(null);
       setCashPayAmount("0.00");
       setCardAmount("0.00");
@@ -1281,7 +1342,7 @@ const BillingPage = () => {
         setCurrentBillId(null);
       }
       setItemCode("");
-      setCustomerPhone("");
+      setCustomerPhone("1111111111");
       setCashPayAmount("0.00");
       setCardAmount("0.00");
       setChequeAmount("0.00");
@@ -1455,7 +1516,7 @@ const BillingPage = () => {
   };
 
   // Clear UI and transaction state (keep defaults)
-  const handleClear = () => {
+  const handleClear = async () => {
     // Reset store transaction (items, customer, currentBillId)
     resetTransaction();
     // Reset local payment inputs and balances
@@ -1474,6 +1535,41 @@ const BillingPage = () => {
     setSelectedCustomerID(null);
     setSelectedHelperID(null);
     setHelperSearchTerm("");
+    setUserEditedCash(false);
+    setUserEditedCard(false);
+    setUserEditedCheque(false);
+
+    // Explicitly re-fetch the default customer for "1111111111".
+    // The useEffect on customerPhone won't re-fire if the phone value didn't
+    // actually change (e.g. it was already "1111111111" from a previous clear),
+    // so selectedCustomerID would stay null causing "no customer data" on save.
+    try {
+      const defaultPhone = "1111111111";
+      const resp = await getCustomerByPhone(defaultPhone);
+      if (resp && resp.data) {
+        let customers = [];
+        if (Array.isArray(resp.data)) {
+          customers = resp.data.filter(
+            (c) => c && Object.keys(c).length > 0,
+          );
+        } else if (
+          typeof resp.data === "object" &&
+          Object.keys(resp.data).length > 0
+        ) {
+          customers = [resp.data];
+        }
+        // Find an exact match on the default phone
+        const exactMatch = customers.find((c) => c.phone === defaultPhone);
+        if (exactMatch) {
+          setCustomerName(exactMatch.firstname || "Customer");
+          setSelectedCustomerID(exactMatch.customerid);
+          console.log("[handleClear] Re-fetched default customer:", exactMatch.customerid, exactMatch.firstname);
+        }
+      }
+    } catch (err) {
+      console.error("[handleClear] Failed to re-fetch default customer:", err);
+    }
+
     // Focus item code for convenience
     setTimeout(() => itemCodeRef.current?.focus(), 0);
   };
