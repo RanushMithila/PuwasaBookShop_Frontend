@@ -143,7 +143,7 @@ const CashCountModal = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-xl shadow-2xl w-[420px] max-h-[90vh] overflow-y-auto relative">
+      <div className="bg-white p-6 rounded-xl shadow-2xl w-[520px] max-h-[90vh] overflow-y-auto relative">
         {/* Toast Notification */}
         {toast.show && (
           <div
@@ -209,40 +209,52 @@ const CashCountModal = ({ isOpen, onClose }) => {
                 <th className="border-r border-gray-200 p-3 text-left font-semibold text-gray-700">
                   Denomination
                 </th>
-                <th className="p-3 text-left font-semibold text-gray-700">
+                <th className="border-r border-gray-200 p-3 text-center font-semibold text-gray-700">
                   Count
+                </th>
+                <th className="p-3 text-right font-semibold text-gray-700">
+                  Amount
                 </th>
               </tr>
             </thead>
             <tbody>
-              {denominations.map((denom, index) => (
-                <tr
-                  key={denom.value}
-                  className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors"
-                >
-                  <td className="border-r border-gray-100 p-2 font-medium text-gray-600">
-                    {denom.label}
-                  </td>
-                  <td className="p-2">
-                    <input
-                      ref={(el) => (inputRefs.current[index] = el)}
-                      type="number"
-                      value={counts[index]}
-                      onChange={(e) => handleCountChange(index, e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(index, e)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-                      min="0"
-                      placeholder="0"
-                      disabled={isLoading}
-                    />
-                  </td>
-                </tr>
-              ))}
+              {denominations.map((denom, index) => {
+                const count = parseInt(counts[index]) || 0;
+                const rowTotal = denom.value * count;
+                return (
+                  <tr
+                    key={denom.value}
+                    className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors"
+                  >
+                    <td className="border-r border-gray-100 p-2 font-medium text-gray-600">
+                      {denom.label}
+                    </td>
+                    <td className="border-r border-gray-100 p-2">
+                      <input
+                        ref={(el) => (inputRefs.current[index] = el)}
+                        type="number"
+                        value={counts[index]}
+                        onChange={(e) => handleCountChange(index, e.target.value)}
+                        onKeyDown={(e) => handleKeyDown(index, e)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all text-center"
+                        min="0"
+                        placeholder="0"
+                        disabled={isLoading}
+                      />
+                    </td>
+                    <td className="p-2 text-right font-semibold text-gray-700 tabular-nums">
+                      {rowTotal.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}
+                    </td>
+                  </tr>
+                );
+              })}
               <tr className="bg-emerald-50 font-bold border-t-2 border-emerald-100">
-                <td className="border-r border-emerald-100 p-3 text-emerald-800">
+                <td colSpan="2" className="border-r border-emerald-100 p-3 text-emerald-800">
                   Total
                 </td>
-                <td className="p-3 text-emerald-800 text-lg">
+                <td className="p-3 text-emerald-800 text-lg text-right tabular-nums">
                   Rs:{" "}
                   {total.toLocaleString(undefined, {
                     minimumFractionDigits: 2,

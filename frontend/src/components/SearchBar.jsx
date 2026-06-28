@@ -16,7 +16,7 @@ const SearchBar = forwardRef(
     ref,
   ) => {
     const storedLocationID = useAuthStore((s) => s.LocationID);
-    const LocationID = storedLocationID ? parseInt(storedLocationID, 10) : 1;
+    const LocationID = storedLocationID ? parseInt(storedLocationID, 10) : null;
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState([]);
     const [isLoading, setIsLoading] = useState(false);

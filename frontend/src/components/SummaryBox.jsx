@@ -15,7 +15,7 @@ const SummaryBox = () => {
 
   // Use proper Zustand hooks for reactivity
   const user = useAuthStore((state) => state.user);
-  const LocationID = useAuthStore((state) => state.LocationID) || 1;
+  const LocationID = useAuthStore((state) => state.LocationID) || null;
 
   // Get billing store selectors and state
   const selectedItems = useBillingStore((state) => state.selectedItems);

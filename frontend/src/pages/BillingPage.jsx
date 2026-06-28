@@ -627,6 +627,7 @@ const BillingPage = () => {
   };
 
   const selectSuggestedItem = async (item) => {
+    console.log("[BillingPage] Selected item barcode:", item.barcode);
     // Prevent concurrent calls from rapid Enter presses
     if (isAddingItemRef.current) return;
     isAddingItemRef.current = true;
@@ -651,7 +652,13 @@ const BillingPage = () => {
           resp.data.length > 0
         ) {
           // Response data is an array: [{ inventoryID, quantity }]
-          const availableStock = Number(resp.data[0].quantity || 0);
+          // Match by inventoryID since multiple items can share the same barcode
+          const matchedStock = resp.data.find(
+            (d) => d.inventoryID === item.inventoryID,
+          );
+          const availableStock = Number(
+            matchedStock ? matchedStock.quantity : resp.data[0].quantity || 0,
+          );
 
           if (requestQty > availableStock) {
             setAlertConfig({
@@ -934,9 +941,9 @@ const BillingPage = () => {
         setCurrentBillId(billIdToUse);
       }
 
-      // Skip addBillDetails when the bill was loaded from temp storage — items are already saved on the
-      // server. Re-sending them would duplicate line items and inflate the server-side total, causing
-      // a payment amount mismatch error.
+      // Skip addBillDetails when items are already saved on the server (loaded from
+      // temp OR previously sent in a failed attempt). Re-sending would duplicate
+      // line items and inflate the server-side total, causing a payment mismatch.
       if (!isLoadedFromTemp) {
         const itemsPayload = selectedItems.map((it) => {
           // Send the raw discount value (absolute rupees) as-entered by the user.
@@ -966,8 +973,11 @@ const BillingPage = () => {
           setInputsLocked(false);
           return;
         }
+        // Mark details as already on the server so retries after a completeBill
+        // failure won't re-send them and cause duplicate rows.
+        setIsLoadedFromTemp(true);
       } else {
-        console.log("[handleAddDetails] Skipping addBillDetails — bill loaded from temp (items already on server).");
+        console.log("[handleAddDetails] Skipping addBillDetails — items already on server.");
       }
 
       // Removed interim last_bill.json write (WriteOnly) to reduce redundant IPC overhead.
@@ -1015,24 +1025,8 @@ const BillingPage = () => {
           type: "error",
         });
 
-        // Clear all state for a fresh start
-        resetTransaction();
-        setCurrentBillId(null);
-        setIsLoadedFromTemp(false);
-        setItemCode("");
-        setCustomerName("Customer");
-        setCustomerPhone("1111111111");
-        setSelectedCustomerID(null);
-        setCashPayAmount("0.00");
-        setCardAmount("0.00");
-        setChequeAmount("0.00");
-        setVoucherCode("");
-        setCreditBalance(0);
-        setUserEditedCash(false);
-        setUserEditedCard(false);
-        setUserEditedCheque(false);
-        setSelectedHelperID(null);
-        setHelperSearchTerm("");
+        // Don't clear any data on failure — let the user correct the issue
+        // (e.g. adjust payment amount) and retry with the same bill.
         return;
       }
       // After a successful Save (complete billing), we DO NOT clear the UI.

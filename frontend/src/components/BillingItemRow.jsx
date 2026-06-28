@@ -55,12 +55,20 @@ const BillingItemRow = ({
     const raw = parseFloat(newDiscount);
     const disc = isNaN(raw) ? 0 : Math.max(0, raw);
     setPerItemDiscount(disc);
+    // Immediately update the store so the summary total recalculates in real-time
+    const total = parseFloat((disc * quantity).toFixed(2));
+    setTotalDiscount(total);
+    updateItemDiscount(item.inventoryID, total);
   };
 
   const handleDiscountBlur = () => {
     // Format to 2 decimal places when leaving the field
     setDiscountInputValue(perItemDiscount.toFixed(2));
     setIsDiscountFocused(false);
+    // Ensure the store is updated when the user tabs/clicks away without pressing Enter
+    const total = parseFloat((perItemDiscount * quantity).toFixed(2));
+    setTotalDiscount(total);
+    updateItemDiscount(item.inventoryID, total);
   };
 
   const handleDoubleClick = () => {

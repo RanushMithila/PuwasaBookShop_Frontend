@@ -108,13 +108,17 @@ const RefundPage = () => {
   };
 
   // ── Computed refund total ──
+  const getRefundablePrice = (item) => {
+    return item.UnitPrice - (item.Discount || 0);
+  };
+
   const getRefundTotal = () => {
     if (!billData?.Details) return 0;
     let total = 0;
     billData.Details.forEach((d) => {
       const sel = selections[d.DetailID];
       if (sel?.checked) {
-        total += d.UnitPrice * sel.refundQty;
+        total += getRefundablePrice(d) * sel.refundQty;
       }
     });
     return parseFloat(total.toFixed(2));
@@ -307,7 +311,7 @@ const RefundPage = () => {
                     <span className="sr-only">Select</span>
                   </th>
                   <th className="px-4 py-3">Item Name</th>
-                  <th className="px-4 py-3 text-right">Unit Price</th>
+                  <th className="px-4 py-3 text-right">Refundable Price</th>
                   <th className="px-4 py-3 text-center">Original QTY</th>
                   <th className="px-4 py-3 text-center">Refund QTY</th>
                   <th className="px-4 py-3 text-right">Line Total</th>
@@ -319,8 +323,9 @@ const RefundPage = () => {
                     checked: false,
                     refundQty: item.QTY,
                   };
+                  const refundablePrice = getRefundablePrice(item);
                   const lineTotal = sel.checked
-                    ? item.UnitPrice * sel.refundQty
+                    ? refundablePrice * sel.refundQty
                     : 0;
                   return (
                     <tr
@@ -345,7 +350,7 @@ const RefundPage = () => {
                         {item.ItemName}
                       </td>
                       <td className="px-4 py-3 text-right text-gray-700">
-                        Rs. {Number(item.UnitPrice).toFixed(2)}
+                        Rs. {refundablePrice.toFixed(2)}
                       </td>
                       <td className="px-4 py-3 text-center text-gray-700">
                         {item.QTY}

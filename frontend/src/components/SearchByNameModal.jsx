@@ -9,7 +9,7 @@ const SearchByNameModal = ({ isOpen, onClose, onSelectItem }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const storedLocationID = useAuthStore((s) => s.LocationID);
-  const LocationID = storedLocationID ? parseInt(storedLocationID, 10) : 1;
+  const LocationID = storedLocationID ? parseInt(storedLocationID, 10) : null;
 
   const search = async (name) => {
     if (!name || name.length < 4) {
