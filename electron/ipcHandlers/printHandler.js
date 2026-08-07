@@ -39,6 +39,7 @@ function runPythonPrint(event, receiptData) {
     ShopPhone: receiptData.ShopPhone || "",
     ShopAddress: receiptData.ShopAddress || "",
     ShopCity: receiptData.ShopCity || "",
+    ShopLocation: receiptData.ShopLocation || "",
     CashierID: String(receiptData.CashierID || "1"),
     CashierName: receiptData.CashierName || "",
     CustomerName: receiptData.CustomerName || "Unknown",

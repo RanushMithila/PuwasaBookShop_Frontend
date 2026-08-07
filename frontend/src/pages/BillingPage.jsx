@@ -20,6 +20,7 @@ import {
   getBill,
   cancelBill,
   getTemporaryBills,
+  getLocationById,
 } from "../services/BillingService";
 import {
   checkRegisterOpen,
@@ -54,6 +55,7 @@ const BillingPage = () => {
   const deviceId = useAuthStore((s) => s.deviceId);
   const tenantInfo = useAuthStore((s) => s.tenantInfo);
   const currentUserName = useAuthStore((s) => s.currentUserName);
+  const locationName = useAuthStore((s) => s.locationName);
 
   // Cashier ID from API
   const [apiCashierId, setApiCashierId] = useState(null);
@@ -92,7 +94,6 @@ const BillingPage = () => {
   const [customerName, setCustomerName] = useState("Customer");
   const [customerPhone, setCustomerPhone] = useState("1111111111");
   const [selectedCustomerID, setSelectedCustomerID] = useState(null);
-  const locationName = "Polonnaruwa";
 
   // Search / item code and suggestions
   const [itemCode, setItemCode] = useState("");
@@ -1049,6 +1050,24 @@ const BillingPage = () => {
           console.error("[BillData] Failed to fetch bill data:", billErr);
         }
 
+        // Fetch location details for the shop address on the receipt
+        let locationData = null;
+        try {
+          if (LocationID) {
+            const locResp = await getLocationById(LocationID);
+            console.log("[LocationData] Fetched location data:", locResp);
+            locationData = locResp;
+          }
+        } catch (locErr) {
+          console.error("[LocationData] Failed to fetch location data:", locErr);
+        }
+
+        // Build shop address from location API (address1 + address2), fallback to tenant address
+        const shopAddress = locationData
+          ? [locationData.address1, locationData.address2].filter(Boolean).join(", ")
+          : (tenantInfo?.address || "");
+        const shopCity = locationData?.city || tenantInfo?.city || "";
+
         // Update last_bill.json — MANDATORY before clearing state.
         // If this fails, the user must know so they don't print stale data.
         if (window?.electron?.ipcRenderer) {
@@ -1058,8 +1077,9 @@ const BillingPage = () => {
             ShopName: tenantInfo?.tenant_name || "",
             ShopEmail: tenantInfo?.contact_email || "",
             ShopPhone: tenantInfo?.contact_phone || "",
-            ShopAddress: tenantInfo?.address || "",
-            ShopCity: tenantInfo?.city || "",
+            ShopAddress: shopAddress,
+            ShopCity: shopCity,
+            ShopLocation: locationName || "",
             CashierID: String(billData?.CashierID || cashierId || ""),
             CashierName: currentUserName || billData?.CashierName || cashierName || "",
             CashierFName: billData?.CashierFName || "",

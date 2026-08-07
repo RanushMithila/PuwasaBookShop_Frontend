@@ -15,6 +15,7 @@ import useAuthStore from "../store/AuthStore";
 const LoginForm = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
@@ -217,6 +218,22 @@ const LoginForm = () => {
 
           // Update session with the found locationID
           if (registerLocationId) {
+            // Resolve the location display name from the locations API
+            let resolvedLocationName = "";
+            try {
+              const locResp = await getAllLocations();
+              if (locResp.status === true && locResp.data) {
+                const matchedLoc = locResp.data.find(
+                  (l) => l.LocationID === registerLocationId || l.LocationID === parseInt(registerLocationId, 10),
+                );
+                if (matchedLoc) {
+                  resolvedLocationName = matchedLoc.LocationName || "";
+                }
+              }
+            } catch (locErr) {
+              console.warn("[LoginForm] Could not resolve location name:", locErr);
+            }
+
             try {
               const profile = await getProfile();
               console.log("Using LocationID:", registerLocationId);
@@ -227,6 +244,7 @@ const LoginForm = () => {
                   name: registerName || "Unknown Register",
                 },
                 LocationID: registerLocationId,
+                locationName: resolvedLocationName,
               });
             } catch (profileErr) {
               console.error("Failed to fetch profile:", profileErr);
@@ -238,6 +256,7 @@ const LoginForm = () => {
                   name: registerName || "Unknown Register",
                 },
                 LocationID: registerLocationId,
+                locationName: resolvedLocationName,
               });
             }
           } else {
@@ -294,6 +313,10 @@ const LoginForm = () => {
         // Fetch user profile and update session in store
         try {
           const profile = await getProfile();
+          // Look up the selected location name from the already-fetched locations array
+          const selectedLoc = locations.find(
+            (l) => l.LocationID === parseInt(selectedLocationId, 10) || l.LocationID === selectedLocationId,
+          );
           setSession({
             user: profile.user || profile,
             location: {
@@ -301,6 +324,7 @@ const LoginForm = () => {
               name: registerName.trim(),
             },
             LocationID: parseInt(selectedLocationId, 10),
+            locationName: selectedLoc?.LocationName || "",
           });
         } catch (profileErr) {
           console.error(
@@ -359,15 +383,37 @@ const LoginForm = () => {
           className="w-full border rounded px-4 py-2 text-sm"
           disabled={isLoading}
         />
-        <input
-          ref={passwordInputRef}
-          type="password"
-          placeholder="Enter Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full border rounded px-4 py-2 text-sm"
-          disabled={isLoading}
-        />
+        <div className="relative">
+          <input
+            ref={passwordInputRef}
+            type={showPassword ? "text" : "password"}
+            placeholder="Enter Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full border rounded px-4 py-2 pr-10 text-sm"
+            disabled={isLoading}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+            tabIndex={-1}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            )}
+          </button>
+        </div>
         {error && <p className="text-red-500 text-sm">{error}</p>}
         <button
           type="submit"

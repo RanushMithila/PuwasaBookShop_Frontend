@@ -234,3 +234,24 @@ export const searchItemsByName = async (name, locationId) => {
     throw error;
   }
 };
+
+/**
+ * Gets location details (name, address, city, etc.) by location ID.
+ * GET /inventory/getLocation/{locationId}
+ * @param {number} locationId - The location ID.
+ * @returns {Promise<object>} The location data (e.g., { locationName, address1, address2, city, province, country }).
+ */
+export const getLocationById = async (locationId) => {
+  try {
+    console.log(`Getting location details for ID: ${locationId}`);
+    const response = await httpClient.get(
+      `/inventory/getLocation/${locationId}`,
+      true,
+    );
+    console.log("Get location response:", response);
+    return response;
+  } catch (error) {
+    console.error("Get location by ID failed:", error);
+    throw error;
+  }
+};

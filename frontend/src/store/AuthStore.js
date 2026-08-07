@@ -8,6 +8,7 @@ const useAuthStore = create(
       user: null, // Will hold { id, name, role }
       location: null, // Will hold { id, name }
       LocationID: null,
+      locationName: null, // Display name of the store location (e.g. "Polonnaruwa")
       isAuthenticated: false,
       accessToken: null, // JWT access token
       refreshToken: null, // JWT refresh token
@@ -27,6 +28,7 @@ const useAuthStore = create(
           user: sessionData.user,
           location: sessionData.location,
           LocationID: locId ? parseInt(locId, 10) : null,
+          locationName: sessionData.locationName || get().locationName || null,
           isAuthenticated: true,
         });
       },
@@ -77,6 +79,8 @@ const useAuthStore = create(
         set({
           user: null,
           location: null,
+          LocationID: null,
+          locationName: null,
           isAuthenticated: false,
           accessToken: null,
           refreshToken: null,
