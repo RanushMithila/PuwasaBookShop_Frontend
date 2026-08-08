@@ -225,7 +225,7 @@ const LoginForm = () => {
               const locData = await getLocationById(registerLocationId);
               console.log("[LoginForm] Location data fetched:", locData);
               setLocationData(locData);
-              resolvedLocationName = locData?.locationName || locData?.LocationName || "";
+              resolvedLocationName = locData?.displayName || locData?.locationName || locData?.LocationName || "";
             } catch (locDataErr) {
               console.warn("[LoginForm] Could not fetch location data:", locDataErr);
             }

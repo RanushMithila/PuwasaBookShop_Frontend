@@ -1074,7 +1074,7 @@ const BillingPage = () => {
             ShopPhone: tenantInfo?.contact_phone || "",
             ShopAddress: shopAddress,
             ShopCity: shopCity,
-            ShopLocation: locationData?.locationName || locationData?.LocationName || locationName || "",
+            ShopLocation: locationData?.displayName || locationData?.locationName || locationData?.LocationName || locationName || "",
             CashierID: String(billData?.CashierID || cashierId || ""),
             CashierName: currentUserName || billData?.CashierName || cashierName || "",
             CashierFName: billData?.CashierFName || "",

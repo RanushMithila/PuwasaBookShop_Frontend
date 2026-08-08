@@ -239,7 +239,7 @@ export const searchItemsByName = async (name, locationId) => {
  * Gets location details (name, address, city, etc.) by location ID.
  * GET /inventory/getLocation/{locationId}
  * @param {number} locationId - The location ID.
- * @returns {Promise<object>} The location data (e.g., { locationName, address1, address2, city, province, country }).
+ * @returns {Promise<object>} The location data (e.g., { locationName, displayName, phone, address1, address2, city, province, country }).
  */
 export const getLocationById = async (locationId) => {
   try {

@@ -14,7 +14,7 @@ const useAuthStore = create(
       refreshToken: null, // JWT refresh token
       deviceId: null, // Machine ID for cash register
       tenantInfo: null, // Will hold { tenant_name, contact_email, contact_phone, city }
-      locationData: null, // Will hold { address1, address2, city } — cached from location API, cleared on logout
+      locationData: null, // Will hold { locationName, displayName, phone, address1, address2, city, province, country } — cached from location API, cleared on logout
       currentUserName: null, // Display name of the logged-in user (firstname + lastname)
 
       // Actions
