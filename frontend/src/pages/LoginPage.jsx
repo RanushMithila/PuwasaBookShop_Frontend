@@ -4,6 +4,7 @@ import {
   getMachineId,
   checkRegisterClosed,
 } from "../services/CashRegisterService";
+import loginIllustration from "../assets/login_illustration.png";
 
 const LoginPage = () => {
   const [isBlocked, setIsBlocked] = useState(false);
@@ -85,11 +86,6 @@ const LoginPage = () => {
             {errorMessage}
           </p>
 
-          {/* <div className="bg-gray-50 p-5 rounded-xl text-sm text-gray-500 border border-gray-100 mb-8 italic">
-            "Please contact your system administrator to enable this terminal's
-            register session."
-          </div> */}
-
           <button
             onClick={() => window.location.reload()}
             className="w-full bg-red-600 text-white py-4 rounded-xl font-bold hover:bg-red-700 active:scale-[0.98] transition-all shadow-[0_10px_20px_rgba(220,38,38,0.3)] flex items-center justify-center gap-2"
@@ -115,8 +111,36 @@ const LoginPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center">
-      <LoginForm />
+    <div className="min-h-screen w-full flex font-sans">
+      {/* Left Side (Blue Background with Illustration) */}
+      <div className="hidden lg:flex flex-col justify-between w-1/2 bg-[#255288] p-12 text-white relative overflow-hidden z-10 shadow-[20px_0_30px_-15px_rgba(0,0,0,0.2)]">
+        {/* Background Image that covers the entire left side to hide mismatched borders */}
+        <div className="absolute inset-0 w-full h-full">
+          <img 
+            src={loginIllustration} 
+            alt="Illustration Background" 
+            className="w-full h-full object-cover opacity-100" 
+          />
+        </div>
+        
+        {/* Decorative overlay to ensure text is readable if needed */}
+        <div className="absolute inset-0 bg-blue-900/10 pointer-events-none"></div>
+        
+        <div className="z-10 mt-8">
+          {/* Header placeholder if needed */}
+        </div>
+        
+        {/* We removed the inner illustration since we made it the cover background, 
+            but if you want it centered rather than covered:
+            You can use object-cover for the full background. */}
+
+      </div>
+      
+      {/* Right Side (Form) */}
+      <div className="w-full lg:w-1/2 p-10 md:p-16 lg:p-24 flex flex-col justify-center bg-white">
+        <LoginForm />
+      </div>
+
     </div>
   );
 };

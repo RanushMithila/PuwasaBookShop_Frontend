@@ -114,6 +114,9 @@ const BillingPage = () => {
   const [userEditedCheque, setUserEditedCheque] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false); // API actions (save/complete)
   const [isPrinting, setIsPrinting] = useState(false); // External print/python action
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [printSuccess, setPrintSuccess] = useState(false);
+  const [tempSaveSuccess, setTempSaveSuccess] = useState(false);
 
   const receiptRef = useRef();
   const itemCodeRef = useRef();
@@ -1147,6 +1150,10 @@ const BillingPage = () => {
         setSelectedHelperID(null);
         setHelperSearchTerm("");
 
+        // Show success state on Save button
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+
         // Focus Print Invoice button so user can press Enter to print
         // (focus was already set at start of save, but ensure it stays there)
         setTimeout(() => printButtonRef.current?.focus(), 100);
@@ -1256,6 +1263,9 @@ const BillingPage = () => {
       setSelectedHelperID(null);
       setHelperSearchTerm("");
 
+      setTempSaveSuccess(true);
+      setTimeout(() => setTempSaveSuccess(false), 3000);
+
       // Focus item code to start new bill
       setTimeout(() => itemCodeRef.current?.focus(), 0);
     } catch (err) {
@@ -1356,6 +1366,11 @@ const BillingPage = () => {
       setCurrentBillId(null);
       setSelectedHelperID(null);
       setHelperSearchTerm("");
+      
+      // Show success state on Print button
+      setPrintSuccess(true);
+      setTimeout(() => setPrintSuccess(false), 3000);
+
       // Unlock inputs after successful print so user can continue
       setInputsLocked(false);
       // Focus item code for next transaction
@@ -2252,10 +2267,12 @@ const BillingPage = () => {
             className={`w-full px-3 py-2 mb-2 rounded-lg flex items-center justify-center gap-2 transition ${
               selectedItems.length === 0 || isProcessing
                 ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                : tempSaveSuccess
+                ? "bg-green-600 text-white hover:bg-green-700 border-none"
                 : "bg-sky-600 text-white hover:bg-sky-700 border-none"
             }`}
           >
-            <span>Save Temporary</span>
+            <span>{tempSaveSuccess ? "Temporary Saved!" : "Save Temporary"}</span>
           </button>
 
           <button
@@ -2275,26 +2292,32 @@ const BillingPage = () => {
             className={`w-full px-3 py-2 rounded-lg flex items-center justify-center gap-2 transition ${
               selectedItems.length === 0 || isProcessing || !showSaveButton
                 ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                : saveSuccess
+                ? "bg-green-600 text-white hover:bg-green-700"
                 : "bg-emerald-600 text-white hover:bg-emerald-700"
             }`}
           >
             {isProcessing && (
               <span className="inline-block h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
             )}
-            <span>Save</span>
+            <span>{saveSuccess ? "Bill Completed!" : "Save"}</span>
           </button>
           <button
             ref={printButtonRef}
             onClick={() => handlePrintInvoice()}
             disabled={isPrinting || isProcessing}
-            className={`w-full px-3 py-2 bg-slate-700 text-white hover:bg-slate-800 border-none rounded-lg flex items-center justify-center gap-2 transition ${
-              isPrinting || isProcessing ? "opacity-60 cursor-not-allowed" : ""
+            className={`w-full px-3 py-2 text-white border-none rounded-lg flex items-center justify-center gap-2 transition ${
+              isPrinting || isProcessing
+                ? "bg-slate-700 opacity-60 cursor-not-allowed"
+                : printSuccess
+                ? "bg-green-600 hover:bg-green-700"
+                : "bg-slate-700 hover:bg-slate-800"
             }`}
           >
             {isPrinting && (
               <span className="inline-block h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
             )}
-            <span>Print Invoice</span>
+            <span>{printSuccess ? "Print Completed!" : "Print Invoice"}</span>
           </button>
           <button
             onClick={() => handleClear()}

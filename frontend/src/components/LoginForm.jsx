@@ -335,8 +335,8 @@ const LoginForm = () => {
       } else {
         setRegisterError(
           createResponse.error_message ||
-            createResponse.message ||
-            "Failed to register cash register.",
+          createResponse.message ||
+          "Failed to register cash register.",
         );
       }
     } catch (error) {
@@ -363,118 +363,131 @@ const LoginForm = () => {
   };
 
   return (
-    <div className="w-full max-w-sm mx-auto mt-32 px-4">
-      <h1 className="text-2xl font-bold text-center mb-6">Puwasa Book Shop</h1>
-      <h2 className="text-lg font-semibold text-center mb-2">Log in</h2>
-      <p className="text-sm text-center text-gray-600 mb-6">
-        Steal the credentials and <br /> make your path to success
-      </p>
-      <form onSubmit={handleLogin} className="space-y-4">
-        <input
-          type="text"
-          placeholder="Enter Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          onKeyDown={handleUsernameKeyDown}
-          className="w-full border rounded px-4 py-2 text-sm"
-          disabled={isLoading}
-        />
-        <div className="relative">
-          <input
-            ref={passwordInputRef}
-            type={showPassword ? "text" : "password"}
-            placeholder="Enter Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full border rounded px-4 py-2 pr-10 text-sm"
-            disabled={isLoading}
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword((prev) => !prev)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
-            tabIndex={-1}
-            aria-label={showPassword ? "Hide password" : "Show password"}
-          >
-            {showPassword ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-                <line x1="1" y1="1" x2="23" y2="23" />
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            )}
-          </button>
+    <div className="w-full flex flex-col h-full justify-center">
+      {/* Logo Placeholder */}
+      <div className="mb-12 flex justify-center lg:justify-start">
+        <div className="flex items-center text-4xl font-extrabold tracking-tight">
+          <span className="text-[#3B82F6]">Prime</span>
+          <span className="text-gray-800">Register</span>
         </div>
-        {error && <p className="text-red-500 text-sm">{error}</p>}
-        <button
-          type="submit"
-          className="w-full bg-green-500 text-white py-2 rounded text-sm hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-          disabled={isLoading}
-        >
-          {isLoading ? "Logging in..." : "Log in"}
-        </button>
-      </form>
-      <p className="text-xs text-center text-gray-500 mt-4 px-4">
-        By clicking continue, you agree to our{" "}
-        <span className="underline cursor-pointer">Terms of Service</span> and{" "}
-        <span className="underline cursor-pointer">Privacy Policy</span>
-      </p>
+      </div>
+
+      <div className="w-full max-w-md mx-auto lg:mx-0">
+        <h2 className="text-3xl font-bold text-gray-800 mb-10 text-center lg:text-left">Sign in</h2>
+
+        <form onSubmit={handleLogin} className="space-y-8">
+
+          <div className="space-y-2">
+            <label className="block text-xs font-bold text-gray-400 tracking-wider uppercase">
+              Email
+            </label>
+            <input
+              type="text"
+              placeholder="Enter Email"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              onKeyDown={handleUsernameKeyDown}
+              className="w-full border-b border-gray-300 px-0 py-2 text-sm text-gray-800 bg-transparent focus:outline-none focus:border-[#3B82F6] transition-colors"
+              disabled={isLoading}
+            />
+          </div>
+
+          <div className="space-y-2 relative">
+            <label className="block text-xs font-bold text-gray-400 tracking-wider uppercase">
+              PASSWORD
+            </label>
+            <div className="relative">
+              <input
+                ref={passwordInputRef}
+                type={showPassword ? "text" : "password"}
+                placeholder="Enter Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border-b border-gray-300 px-0 py-2 pr-10 text-sm text-gray-800 bg-transparent focus:outline-none focus:border-[#3B82F6] transition-colors tracking-widest placeholder:tracking-normal"
+                disabled={isLoading}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-0 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                tabIndex={-1}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {error && <p className="text-red-500 text-sm">{error}</p>}
+
+          <div className="flex justify-end pt-8">
+            <button
+              type="submit"
+              className="bg-[#3B82F6] text-white px-8 py-3 rounded-full text-sm font-medium hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 disabled:bg-gray-400 disabled:shadow-none disabled:cursor-not-allowed flex items-center"
+              disabled={isLoading}
+            >
+              {isLoading ? "Signing in..." : "Sign in"}
+              {!isLoading && (
+                <svg className="w-4 h-4 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              )}
+            </button>
+          </div>
+        </form>
+
+      </div>
 
       {/* Cash Register Registration Popup */}
       {showRegisterPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-800">
-                Register Cash Register
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-8">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-gray-800">
+                Register Device
               </h3>
               <button
                 onClick={handleCancelRegistration}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-100"
               >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
-            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-sm text-amber-800">
-                <strong>Device not registered.</strong> This device needs to be
-                registered as a cash register before proceeding.
-              </p>
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-100 rounded-xl">
+              <div className="flex gap-3">
+                <svg className="w-6 h-6 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm text-amber-800">
+                  This device needs to be registered as a cash register before proceeding.
+                </p>
+              </div>
             </div>
 
-            <form onSubmit={handleRegisterDevice} className="space-y-4">
+            <form onSubmit={handleRegisterDevice} className="space-y-5">
               <div>
-                <label
-                  htmlFor="location-select"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
+                <label htmlFor="location-select" className="block text-sm font-bold text-gray-700 mb-2">
                   Location
                 </label>
                 <select
                   id="location-select"
                   value={selectedLocationId}
-                  onChange={(e) =>
-                    setSelectedLocationId(Number(e.target.value))
-                  }
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  onChange={(e) => setSelectedLocationId(Number(e.target.value))}
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#3B82F6] transition-colors"
                   disabled={isLoadingLocations || isRegistering}
                 >
                   {isLoadingLocations ? (
@@ -483,10 +496,7 @@ const LoginForm = () => {
                     <option value="">No locations available</option>
                   ) : (
                     locations.map((location) => (
-                      <option
-                        key={location.LocationID}
-                        value={location.LocationID}
-                      >
+                      <option key={location.LocationID} value={location.LocationID}>
                         {location.LocationName}
                       </option>
                     ))
@@ -495,42 +505,37 @@ const LoginForm = () => {
               </div>
 
               <div>
-                <label
-                  htmlFor="register-name"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
+                <label htmlFor="register-name" className="block text-sm font-bold text-gray-700 mb-2">
                   Register Name
                 </label>
                 <input
                   type="text"
                   id="register-name"
-                  placeholder="Enter register name (e.g., POS Terminal 1)"
+                  placeholder="e.g., POS Terminal 1"
                   value={registerName}
                   onChange={(e) => setRegisterName(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#3B82F6] transition-colors"
                   disabled={isRegistering}
                 />
               </div>
 
               {registerError && (
-                <p className="text-red-500 text-sm">{registerError}</p>
+                <p className="text-red-500 text-sm font-medium">{registerError}</p>
               )}
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3 pt-4">
                 <button
                   type="button"
                   onClick={handleCancelRegistration}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-200 transition-colors disabled:opacity-50"
                   disabled={isRegistering}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-                  disabled={
-                    isRegistering || isLoadingLocations || !selectedLocationId
-                  }
+                  className="flex-1 px-4 py-3 bg-[#3B82F6] text-white rounded-xl text-sm font-bold hover:bg-blue-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20"
+                  disabled={isRegistering || isLoadingLocations || !selectedLocationId}
                 >
                   {isRegistering ? "Registering..." : "Register Device"}
                 </button>
@@ -544,3 +549,4 @@ const LoginForm = () => {
 };
 
 export default LoginForm;
+
