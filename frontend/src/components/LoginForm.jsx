@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { login, getProfile, getCurrentUser } from "../services/AuthService";
 import { getTenantInfo } from "../services/TenantService";
 import { getUsers } from "../services/UserService";
+import { getLocationById } from "../services/BillingService";
 import {
   getMachineId,
   getRegisterByDeviceId,
@@ -24,6 +25,7 @@ const LoginForm = () => {
   const setSession = useAuthStore((state) => state.setSession);
   const setTenantInfo = useAuthStore((state) => state.setTenantInfo);
   const setCurrentUserName = useAuthStore((state) => state.setCurrentUserName);
+  const setLocationData = useAuthStore((state) => state.setLocationData);
 
   // Cash register popup state
   const [showRegisterPopup, setShowRegisterPopup] = useState(false);
@@ -92,7 +94,6 @@ const LoginForm = () => {
             tenant_name: t.tenant_name || "",
             contact_email: t.contact_email || "",
             contact_phone: t.contact_phone || "",
-            address: t.address || "",
             city: t.city || "",
           });
           console.log("[LoginForm] Tenant info stored:", t.tenant_name);
@@ -218,20 +219,15 @@ const LoginForm = () => {
 
           // Update session with the found locationID
           if (registerLocationId) {
-            // Resolve the location display name from the locations API
+            // Fetch location details (name, address, city) — single API call for both
             let resolvedLocationName = "";
             try {
-              const locResp = await getAllLocations();
-              if (locResp.status === true && locResp.data) {
-                const matchedLoc = locResp.data.find(
-                  (l) => l.LocationID === registerLocationId || l.LocationID === parseInt(registerLocationId, 10),
-                );
-                if (matchedLoc) {
-                  resolvedLocationName = matchedLoc.LocationName || "";
-                }
-              }
-            } catch (locErr) {
-              console.warn("[LoginForm] Could not resolve location name:", locErr);
+              const locData = await getLocationById(registerLocationId);
+              console.log("[LoginForm] Location data fetched:", locData);
+              setLocationData(locData);
+              resolvedLocationName = locData?.locationName || locData?.LocationName || "";
+            } catch (locDataErr) {
+              console.warn("[LoginForm] Could not fetch location data:", locDataErr);
             }
 
             try {

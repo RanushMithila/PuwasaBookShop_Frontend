@@ -13,7 +13,8 @@ const useAuthStore = create(
       accessToken: null, // JWT access token
       refreshToken: null, // JWT refresh token
       deviceId: null, // Machine ID for cash register
-      tenantInfo: null, // Will hold { tenant_name, contact_email, address, city }
+      tenantInfo: null, // Will hold { tenant_name, contact_email, contact_phone, city }
+      locationData: null, // Will hold { address1, address2, city } — cached from location API, cleared on logout
       currentUserName: null, // Display name of the logged-in user (firstname + lastname)
 
       // Actions
@@ -69,6 +70,11 @@ const useAuthStore = create(
         set({ tenantInfo: info || null });
       },
 
+      // Cache location address data (from /inventory/getLocation API)
+      setLocationData: (data) => {
+        set({ locationData: data || null });
+      },
+
       // Set current user's display name
       setCurrentUserName: (name) => {
         set({ currentUserName: name || null });
@@ -85,6 +91,7 @@ const useAuthStore = create(
           accessToken: null,
           refreshToken: null,
           deviceId: null,
+          locationData: null,
           tenantInfo: null,
           currentUserName: null,
         });

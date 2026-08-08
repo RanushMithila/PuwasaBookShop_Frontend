@@ -20,7 +20,6 @@ import {
   getBill,
   cancelBill,
   getTemporaryBills,
-  getLocationById,
 } from "../services/BillingService";
 import {
   checkRegisterOpen,
@@ -32,6 +31,7 @@ import { getCurrentUser } from "../services/AuthService";
 import { getVoucherByCode } from "../services/RefundService";
 
 import AlertModal from "../components/AlertModal";
+import PaymentReminderBanner from "../components/PaymentReminderBanner";
 
 const BillingPage = () => {
   // Navigation
@@ -56,6 +56,7 @@ const BillingPage = () => {
   const tenantInfo = useAuthStore((s) => s.tenantInfo);
   const currentUserName = useAuthStore((s) => s.currentUserName);
   const locationName = useAuthStore((s) => s.locationName);
+  const cachedLocationData = useAuthStore((s) => s.locationData);
 
   // Cashier ID from API
   const [apiCashierId, setApiCashierId] = useState(null);
@@ -1050,23 +1051,14 @@ const BillingPage = () => {
           console.error("[BillData] Failed to fetch bill data:", billErr);
         }
 
-        // Fetch location details for the shop address on the receipt
-        let locationData = null;
-        try {
-          if (LocationID) {
-            const locResp = await getLocationById(LocationID);
-            console.log("[LocationData] Fetched location data:", locResp);
-            locationData = locResp;
-          }
-        } catch (locErr) {
-          console.error("[LocationData] Failed to fetch location data:", locErr);
-        }
+        // Use location data cached at login
+        const locationData = cachedLocationData;
 
-        // Build shop address from location API (address1 + address2), fallback to tenant address
+        // Build shop address from location API (address1 + address2)
         const shopAddress = locationData
           ? [locationData.address1, locationData.address2].filter(Boolean).join(", ")
-          : (tenantInfo?.address || "");
-        const shopCity = locationData?.city || tenantInfo?.city || "";
+          : "";
+        const shopCity = locationData?.city || "";
 
         // Update last_bill.json — MANDATORY before clearing state.
         // If this fails, the user must know so they don't print stale data.
@@ -1079,7 +1071,7 @@ const BillingPage = () => {
             ShopPhone: tenantInfo?.contact_phone || "",
             ShopAddress: shopAddress,
             ShopCity: shopCity,
-            ShopLocation: locationName || "",
+            ShopLocation: locationData?.locationName || locationData?.LocationName || locationName || "",
             CashierID: String(billData?.CashierID || cashierId || ""),
             CashierName: currentUserName || billData?.CashierName || cashierName || "",
             CashierFName: billData?.CashierFName || "",
@@ -1653,6 +1645,8 @@ const BillingPage = () => {
 
   return (
     <div className="flex flex-col lg:flex-row h-screen overflow-hidden w-full bg-gray-50">
+      {/* Payment reminder banner — auto-fetches on mount, renders nothing if no reminder */}
+      <PaymentReminderBanner />
       {/* Left: Items area */}
       <div className="flex flex-col flex-grow w-full lg:w-auto p-2 lg:p-4 overflow-hidden h-full">
         <div className="flex flex-wrap items-center gap-2 lg:gap-3">
