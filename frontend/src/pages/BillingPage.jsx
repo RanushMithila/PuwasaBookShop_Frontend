@@ -53,7 +53,6 @@ const BillingPage = () => {
   const storedLocationID = useAuthStore((s) => s.LocationID);
   const LocationID = storedLocationID ? parseInt(storedLocationID, 10) : null; // No fallback - must come from API
   const deviceId = useAuthStore((s) => s.deviceId);
-  const tenantInfo = useAuthStore((s) => s.tenantInfo);
   const currentUserName = useAuthStore((s) => s.currentUserName);
   const locationName = useAuthStore((s) => s.locationName);
   const cachedLocationData = useAuthStore((s) => s.locationData);
@@ -966,12 +965,22 @@ const BillingPage = () => {
         });
         console.log("Add details response:", resp);
         if (!(resp && resp.status === true)) {
+          // Replace inventory IDs in the error message with real item names
+          let rawError = resp?.error_message || resp?.message || JSON.stringify(resp);
+          if (rawError) {
+            rawError = rawError.replace(/inventory ID (\d+)/gi, (match, id) => {
+              const item = selectedItems.find((it) => String(it.inventoryID) === id);
+              return item ? `"${item.itemDescription}"` : match;
+            });
+            // Replace location IDs with the actual location name
+            if (locationName) {
+              rawError = rawError.replace(/at location \d+/gi, `at "${locationName}"`);
+            }
+          }
           setAlertConfig({
             isOpen: true,
             title: "Save Error",
-            message:
-              "Failed to save details: " +
-              (resp?.error_message || resp?.message || JSON.stringify(resp)),
+            message: "Failed to save details: " + rawError,
             type: "error",
           });
           setIsProcessing(false);
@@ -1066,12 +1075,24 @@ const BillingPage = () => {
         // Update last_bill.json — MANDATORY before clearing state.
         // If this fails, the user must know so they don't print stale data.
         if (window?.electron?.ipcRenderer) {
+          console.log("[LastBillJSON] ===== Building last_bill.json =====");
+          console.log("[LastBillJSON] Raw locationData from AuthStore:", JSON.stringify(locationData, null, 2));
+          console.log("[LastBillJSON] locationName from AuthStore:", locationName);
+          console.log("[LastBillJSON] Resolved ShopName:", locationData?.displayName || locationData?.locationName || locationData?.LocationName || locationName || "(empty)");
+          console.log("[LastBillJSON] Resolved ShopEmail:", locationData?.email || locationData?.Email || "(empty)");
+          console.log("[LastBillJSON] Resolved ShopPhone:", locationData?.phone || locationData?.Phone || "(empty)");
+          console.log("[LastBillJSON] Resolved ShopAddress:", shopAddress || "(empty)");
+          console.log("[LastBillJSON] Resolved ShopCity:", shopCity || "(empty)");
+          console.log("[LastBillJSON] billData from API:", JSON.stringify(billData, null, 2));
+          console.log("[LastBillJSON] cashierId:", cashierId, "| currentUserName:", currentUserName);
+          console.log("[LastBillJSON] BillID:", billIdToUse);
+
           const finalPayload = {
             BillID: String(billIdToUse),
             date: dateStr,
-            ShopName: tenantInfo?.tenant_name || "",
-            ShopEmail: tenantInfo?.contact_email || "",
-            ShopPhone: tenantInfo?.contact_phone || "",
+            ShopName: locationData?.displayName || locationData?.locationName || locationData?.LocationName || locationName || "",
+            ShopEmail: locationData?.email || locationData?.Email || "",
+            ShopPhone: locationData?.phone || locationData?.Phone || "",
             ShopAddress: shopAddress,
             ShopCity: shopCity,
             ShopLocation: locationData?.displayName || locationData?.locationName || locationData?.LocationName || locationName || "",
@@ -1105,19 +1126,15 @@ const BillingPage = () => {
             })),
             WriteOnly: true,
           };
-          const now3 = new Date();
-          const time3 = `${now3.getHours().toString().padStart(2, "0")}:${now3.getMinutes().toString().padStart(2, "0")}:${now3.getSeconds().toString().padStart(2, "0")}.${now3.getMilliseconds().toString().padStart(3, "0")}`;
-          console.log(
-            `[${time3}] Updating final last_bill.json:`,
-            finalPayload,
-          );
+
+          console.log("[LastBillJSON] Final payload:", JSON.stringify(finalPayload, null, 2));
 
           try {
             await window.electron.ipcRenderer.invoke(
               "print-receipt",
               finalPayload,
             );
-            console.log(`[${time3}] last_bill.json updated successfully`);
+            console.log("[LastBillJSON] ✅ last_bill.json updated successfully");
           } catch (ipcErr) {
             console.error("CRITICAL: Failed to write last_bill.json:", ipcErr);
             setAlertConfig({
