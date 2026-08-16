@@ -81,13 +81,18 @@ const PaymentReminderBanner = () => {
   let message = "";
   let icon = "";
   if (isOverdue) {
-    message = `Your billing was due on ${formattedDate}. Please settle immediately.`;
+    const graceDaysLeft = 14 + remaining_days; // remaining_days is negative, e.g. -1 → 13 days left
+    if (graceDaysLeft > 0) {
+      message = `Your billing was due on ${formattedDate}. Please pay the subscription fee within ${graceDaysLeft} day${graceDaysLeft === 1 ? "" : "s"} to avoid service interruption.`;
+    } else {
+      message = `Your billing was due on ${formattedDate}. Your grace period has expired. Please settle your payment immediately to restore service.`;
+    }
     icon = "⚠️";
   } else if (isUrgent) {
-    message = `Next billing: ${formattedDate} — only ${remaining_days} day${remaining_days === 1 ? "" : "s"} remaining!`;
+    message = `You have ${remaining_days} day${remaining_days === 1 ? "" : "s"} to pay the subscription to avoid interruption. Next billing: ${formattedDate}.`;
     icon = "🔔";
   } else {
-    message = `Next billing: ${formattedDate} (${remaining_days} days remaining)`;
+    message = `You have ${remaining_days} day${remaining_days === 1 ? "" : "s"} to pay the subscription to avoid interruption. Next billing: ${formattedDate}.`;
     icon = "📅";
   }
 
