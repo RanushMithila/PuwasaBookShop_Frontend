@@ -26,6 +26,7 @@ const LoginForm = () => {
   const setTenantInfo = useAuthStore((state) => state.setTenantInfo);
   const setCurrentUserName = useAuthStore((state) => state.setCurrentUserName);
   const setLocationData = useAuthStore((state) => state.setLocationData);
+  const setUsersList = useAuthStore((state) => state.setUsersList);
 
   // Cash register popup state
   const [showRegisterPopup, setShowRegisterPopup] = useState(false);
@@ -36,6 +37,7 @@ const LoginForm = () => {
   const [registerError, setRegisterError] = useState("");
   const [currentDeviceId, setCurrentDeviceId] = useState("");
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
+  const [cachedUserProfile, setCachedUserProfile] = useState(null);
 
   // Create a ref for the password input
   const passwordInputRef = useRef(null);
@@ -80,6 +82,7 @@ const LoginForm = () => {
 
       // Fetch tenant info and user display name in parallel (non-blocking)
       // These are stored in AuthStore for use in billing/receipts
+      let fetchedUserData = null;
       try {
         const [tenantResp, userResp, usersResp] = await Promise.allSettled([
           getTenantInfo(),
@@ -101,24 +104,27 @@ const LoginForm = () => {
           console.warn("[LoginForm] Could not fetch tenant info");
         }
 
+        // Cache user data from /user/me
+        if (userResp.status === "fulfilled" && userResp.value) {
+          fetchedUserData = userResp.value.data || userResp.value;
+          setCachedUserProfile(fetchedUserData);
+        }
+
         // Determine user display name by matching UserID from /user/me against /user/users
         let displayName = null;
-        const currentUserId =
-          userResp.status === "fulfilled" && userResp.value?.status === true && userResp.value?.data
-            ? userResp.value.data.UserID
-            : null;
-        const userEmail =
-          userResp.status === "fulfilled" && userResp.value?.data?.Email
-            ? userResp.value.data.Email
-            : null;
+        const currentUserId = fetchedUserData?.UserID || null;
+        const userEmail = fetchedUserData?.Email || null;
 
-        if (currentUserId && usersResp.status === "fulfilled" && usersResp.value?.status === true && Array.isArray(usersResp.value.data)) {
-          const matchedUser = usersResp.value.data.find((u) => u.UserID === currentUserId);
-          if (matchedUser) {
-            const fname = matchedUser.firstname || "";
-            const lname = matchedUser.lastname || "";
-            const fullName = `${fname} ${lname}`.trim();
-            displayName = fullName || matchedUser.Email || userEmail;
+        if (usersResp.status === "fulfilled" && usersResp.value?.status === true && Array.isArray(usersResp.value.data)) {
+          setUsersList(usersResp.value.data);
+          if (currentUserId) {
+            const matchedUser = usersResp.value.data.find((u) => u.UserID === currentUserId);
+            if (matchedUser) {
+              const fname = matchedUser.firstname || "";
+              const lname = matchedUser.lastname || "";
+              const fullName = `${fname} ${lname}`.trim();
+              displayName = fullName || matchedUser.Email || userEmail;
+            }
           }
         }
 
@@ -231,10 +237,12 @@ const LoginForm = () => {
             }
 
             try {
-              const profile = await getProfile();
+              // Reuse already-fetched profile data instead of triggering duplicate /user/me API call
+              const profile = fetchedUserData || cachedUserProfile || (await getCurrentUser());
+              const profileUser = profile?.user || profile?.data || profile;
               console.log("Using LocationID:", registerLocationId);
               setSession({
-                user: profile.user || profile,
+                user: profileUser,
                 location: {
                   id: registerLocationId,
                   name: registerName || "Unknown Register",
@@ -243,10 +251,10 @@ const LoginForm = () => {
                 locationName: resolvedLocationName,
               });
             } catch (profileErr) {
-              console.error("Failed to fetch profile:", profileErr);
+              console.error("Failed to set profile:", profileErr);
               // Still set the LocationID even if profile fetch fails
               setSession({
-                user: null,
+                user: fetchedUserData || cachedUserProfile || null,
                 location: {
                   id: registerLocationId,
                   name: registerName || "Unknown Register",
@@ -306,15 +314,16 @@ const LoginForm = () => {
       if (createResponse.status === true) {
         console.log("Cash register created successfully:", createResponse.data);
 
-        // Fetch user profile and update session in store
+        // Update session in store reusing cached user profile or fallback
         try {
-          const profile = await getProfile();
+          const profile = cachedUserProfile || (await getCurrentUser());
+          const profileUser = profile?.user || profile?.data || profile;
           // Look up the selected location name from the already-fetched locations array
           const selectedLoc = locations.find(
             (l) => l.LocationID === parseInt(selectedLocationId, 10) || l.LocationID === selectedLocationId,
           );
           setSession({
-            user: profile.user || profile,
+            user: profileUser,
             location: {
               id: parseInt(selectedLocationId, 10),
               name: registerName.trim(),
@@ -324,7 +333,7 @@ const LoginForm = () => {
           });
         } catch (profileErr) {
           console.error(
-            "Failed to fetch profile after registration:",
+            "Failed to set profile after registration:",
             profileErr,
           );
         }

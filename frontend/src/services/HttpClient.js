@@ -44,48 +44,23 @@ class HttpClient {
         throw new Error("No refresh token available");
       }
 
-      console.log("✅ Making refresh request with query parameter...");
+      console.log("✅ Making refresh request with JSON body...");
 
-      // Prefer refresh using query parameter (matches backend sample). If that fails with 422,
-      // try JSON-body fallback for compatibility with other deployments.
-      const refreshUrlQuery = `${
-        this.baseURL
-      }/auth/refresh-token?refresh_token=${encodeURIComponent(refreshToken)}`;
-      console.log("📤 Refresh request details (attempt 1 - query param):", {
-        url: refreshUrlQuery,
+      const refreshUrl = `${this.baseURL}/auth/refresh-token`;
+      console.log("📤 Refresh request details (JSON body):", {
+        url: refreshUrl,
         method: "POST",
-        contentType: "application/json (empty body)",
+        contentType: "application/json",
+        body: "refresh_token=[HIDDEN]",
       });
 
-      let response = await fetch(refreshUrlQuery, {
+      let response = await fetch(refreshUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: "",
+        body: JSON.stringify({ refresh_token: refreshToken }),
       });
-
-      // If server rejects with 422 (unprocessable entity), retry using JSON body format
-      if (!response.ok && response.status === 422) {
-        console.warn(
-          "Refresh with query param returned 422, retrying with JSON body format"
-        );
-        const refreshUrl = `${this.baseURL}/auth/refresh-token`;
-        console.log("📤 Refresh request details (attempt 2 - JSON body):", {
-          url: refreshUrl,
-          method: "POST",
-          contentType: "application/json",
-          body: "refresh_token=[HIDDEN]",
-        });
-
-        response = await fetch(refreshUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-      }
 
       console.log("📥 Refresh response status:", {
         status: response.status,

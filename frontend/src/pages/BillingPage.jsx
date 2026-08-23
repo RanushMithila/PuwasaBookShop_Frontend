@@ -56,9 +56,13 @@ const BillingPage = () => {
   const currentUserName = useAuthStore((s) => s.currentUserName);
   const locationName = useAuthStore((s) => s.locationName);
   const cachedLocationData = useAuthStore((s) => s.locationData);
+  const usersList = useAuthStore((s) => s.usersList);
+  const setUsersList = useAuthStore((s) => s.setUsersList);
 
-  // Cashier ID from API
-  const [apiCashierId, setApiCashierId] = useState(null);
+  // Cashier ID from AuthStore or API fallback
+  const [apiCashierId, setApiCashierId] = useState(
+    () => user?.UserID || user?.id || null
+  );
 
   // UI state
   const [showCashInOut, setShowCashInOut] = useState(false);
@@ -69,7 +73,9 @@ const BillingPage = () => {
   const [isOpeningAmountLoading, setIsOpeningAmountLoading] = useState(false);
   const [registerSessionId, setRegisterSessionId] = useState(null);
   const [temporaryBills, setTemporaryBills] = useState([]);
-  const [helpers, setHelpers] = useState([]);
+  const [helpers, setHelpers] = useState(
+    () => (Array.isArray(usersList) && usersList.length > 0 ? usersList : [])
+  );
   const [isWholesale, setIsWholesale] = useState(false);
   const [selectedHelperID, setSelectedHelperID] = useState(null);
   const [helperSearchTerm, setHelperSearchTerm] = useState("");
@@ -309,39 +315,62 @@ const BillingPage = () => {
     return () => clearInterval(intervalId);
   }, []);
 
-  // Fetch users/helpers on mount
+  // Fetch users/helpers on mount only if not already cached in AuthStore
   useEffect(() => {
+    if (Array.isArray(usersList) && usersList.length > 0) {
+      return;
+    }
+
+    let isMounted = true;
     const fetchHelpers = async () => {
       try {
         const resp = await getUsers();
-        if (resp && resp.status === true && Array.isArray(resp.data)) {
+        if (isMounted && resp && resp.status === true && Array.isArray(resp.data)) {
           setHelpers(resp.data);
+          setUsersList(resp.data);
         }
       } catch (err) {
-        console.error("Failed to fetch helpers:", err);
+        if (isMounted) {
+          console.error("Failed to fetch helpers:", err);
+        }
       }
     };
     fetchHelpers();
-  }, []);
 
-  // Fetch current user (cashier) data on mount
+    return () => {
+      isMounted = false;
+    };
+  }, [usersList, setUsersList]);
+
+  // Fetch current user (cashier) data on mount only if not already present in AuthStore
   useEffect(() => {
+    if (user?.UserID || user?.id || apiCashierId) {
+      return;
+    }
+
+    let isMounted = true;
     const fetchCashierData = async () => {
       try {
-        console.log("[CashierData] Fetching current user from /user/me");
+        console.log("[CashierData] Fetching current user from /user/me (fallback)");
         const resp = await getCurrentUser();
         console.log("[CashierData] Response:", resp);
-        if (resp && resp.status === true && resp.data) {
+        if (isMounted && resp && resp.status === true && resp.data) {
           const userId = resp.data.UserID;
           console.log("[CashierData] Setting cashier ID:", userId);
           setApiCashierId(userId);
         }
       } catch (err) {
-        console.error("[CashierData] Failed to fetch current user:", err);
+        if (isMounted) {
+          console.error("[CashierData] Failed to fetch current user:", err);
+        }
       }
     };
     fetchCashierData();
-  }, []);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, apiCashierId]);
 
   // Helper functions
   const formatPhoneNumber = (value) => {

@@ -16,6 +16,7 @@ const useAuthStore = create(
       tenantInfo: null, // Will hold { tenant_name, contact_email, contact_phone, city }
       locationData: null, // Will hold { locationName, displayName, phone, address1, address2, city, province, country } — cached from location API, cleared on logout
       currentUserName: null, // Display name of the logged-in user (firstname + lastname)
+      usersList: [], // Cached list of tenant users / staff members for helper dropdown and display names
 
       // Actions
       setSession: (sessionData) => {
@@ -80,6 +81,11 @@ const useAuthStore = create(
         set({ currentUserName: name || null });
       },
 
+      // Cache tenant users / staff list
+      setUsersList: (users) => {
+        set({ usersList: Array.isArray(users) ? users : [] });
+      },
+
       // Clear session and tokens together - no more manual coordination needed
       clearSession: () => {
         set({
@@ -94,6 +100,7 @@ const useAuthStore = create(
           locationData: null,
           tenantInfo: null,
           currentUserName: null,
+          usersList: [],
         });
       },
 

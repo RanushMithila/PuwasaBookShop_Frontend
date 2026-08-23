@@ -4,9 +4,11 @@ import { getPaymentReminder } from "../services/NotificationService";
 /**
  * PaymentReminderBanner
  *
- * Fetches the payment reminder API once on mount. If a reminder exists
- * (remaining_days <= 7), it renders a compact, fixed-position banner in the
- * top-right corner of the viewport. Otherwise it renders nothing.
+ * Fetches the payment reminder API once on mount.
+ * Displays:
+ *  - Payment Reminder: when remaining_days is between 1 and 7 (days <= 7 and > 0)
+ *  - Payment Overdue: when remaining_days is 0 to -14 (overdue within grace period) or beyond
+ *  - Hidden: when remaining_days > 7
  *
  * The banner auto-dismisses after 15 seconds or can be closed manually.
  */
@@ -24,10 +26,17 @@ const PaymentReminderBanner = () => {
         if (cancelled) return;
 
         if (resp && resp.status === true && resp.data) {
-          setReminder(resp.data);
-          setVisible(true);
+          const days = Number(resp.data.remaining_days);
+          // Only show banner if remaining_days <= 7
+          if (!isNaN(days) && days <= 7) {
+            setReminder({
+              ...resp.data,
+              remaining_days: days,
+            });
+            setVisible(true);
+          }
         }
-        // If status is false or data is null → no reminder → show nothing
+        // If status is false, data is null, or remaining_days > 7 → show nothing
       } catch (err) {
         console.error("[PaymentReminderBanner] fetch error:", err);
       }
@@ -53,12 +62,15 @@ const PaymentReminderBanner = () => {
     setDismissed(true);
   }, []);
 
-  // Don't render if there's no reminder or it's been dismissed
+  // Don't render if there's no reminder, dismissed, or remaining_days > 7
   if (!reminder || !visible || dismissed) return null;
 
   const { next_billing_date, remaining_days } = reminder;
 
-  // Determine severity for styling
+  // Extra safety guard: do not render if days are greater than 7
+  if (typeof remaining_days === "number" && remaining_days > 7) return null;
+
+  // Determine severity for styling and messaging
   const isOverdue = remaining_days <= 0;
   const isUrgent = remaining_days > 0 && remaining_days <= 7;
 
@@ -80,20 +92,30 @@ const PaymentReminderBanner = () => {
   // Build the message
   let message = "";
   let icon = "";
+  let label = "Payment Reminder";
+
   if (isOverdue) {
-    const graceDaysLeft = 14 + remaining_days; // remaining_days is negative, e.g. -1 → 13 days left
-    if (graceDaysLeft > 0) {
-      message = `Your billing was due on ${formattedDate}. Please pay the subscription fee within ${graceDaysLeft} day${graceDaysLeft === 1 ? "" : "s"} to avoid service interruption.`;
-    } else {
-      message = `Your billing was due on ${formattedDate}. Your grace period has expired. Please settle your payment immediately to restore service.`;
-    }
+    label = "Payment Overdue";
     icon = "⚠️";
+    if (remaining_days === 0) {
+      message = `Your subscription payment is due today (${formattedDate}). Please pay now to avoid service interruption.`;
+    } else {
+      const overdueDays = Math.abs(remaining_days);
+      const graceDaysLeft = 14 + remaining_days; // e.g. -1 -> 13 days left, -14 -> 0 days left
+      if (graceDaysLeft > 0) {
+        message = `Your billing was due on ${formattedDate} (${overdueDays} day${overdueDays === 1 ? "" : "s"} overdue). Please pay within ${graceDaysLeft} day${graceDaysLeft === 1 ? "" : "s"} to avoid service interruption.`;
+      } else {
+        message = `Your billing was due on ${formattedDate} (${overdueDays} days overdue). Your 14-day grace period has expired. Please settle your payment immediately to restore service.`;
+      }
+    }
   } else if (isUrgent) {
-    message = `You have ${remaining_days} day${remaining_days === 1 ? "" : "s"} to pay the subscription to avoid interruption. Next billing: ${formattedDate}.`;
+    label = "Payment Reminder";
     icon = "🔔";
-  } else {
     message = `You have ${remaining_days} day${remaining_days === 1 ? "" : "s"} to pay the subscription to avoid interruption. Next billing: ${formattedDate}.`;
+  } else {
+    label = "Payment Reminder";
     icon = "📅";
+    message = `You have ${remaining_days} day${remaining_days === 1 ? "" : "s"} to pay the subscription to avoid interruption. Next billing: ${formattedDate}.`;
   }
 
   // Severity-based styling
@@ -190,7 +212,7 @@ const PaymentReminderBanner = () => {
         <span style={iconStyle}>{icon}</span>
         <div style={textStyle}>
           <span style={labelStyle}>
-            {isOverdue ? "Payment Overdue" : "Payment Reminder"}
+            {label}
           </span>
           {message}
         </div>
